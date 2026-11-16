@@ -15,7 +15,8 @@
     "regression": "node smoke.mjs --regression",
     "data": "node recheck.mjs",
     "responsive": "node recheck.mjs --mobile",
-    "live": "node recheck.mjs --live"
+    "live": "node recheck.mjs --live",
+    "live:details": "node live-details.mjs"
   },
   "devDependencies": {
     "playwright": "1.65.1",

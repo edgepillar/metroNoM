@@ -36,8 +36,8 @@ canvas{display:block}
 @keyframes blink{50%{opacity:.2}}
 
 /* nav */
-#nav{position:fixed;right:2.3vw;bottom:2.4vh;z-index:11;display:flex;gap:6px;opacity:0;transition:opacity .5s;font:500 11px Arial;letter-spacing:.06em}
-#nav.show,#nav:focus-within{opacity:1}
+#nav{position:fixed;right:2.3vw;bottom:2.4vh;z-index:11;display:flex;gap:6px;opacity:0;pointer-events:none;transition:opacity .5s;font:500 11px Arial;letter-spacing:.06em}
+#nav.show,#nav:focus-within{opacity:1;pointer-events:auto}
 #nav button:focus-visible,.sbtn:focus-visible,.nt-card button:focus-visible{outline:2px solid #6ff34d;outline-offset:3px}
 #nav button{all:unset;cursor:pointer;padding:6px 10px;border:1px solid #23283f;color:#8a90a8;background:rgba(10,12,22,.75);text-transform:uppercase}
 #nav button:hover{color:#fff;border-color:#3a4166}
@@ -1636,7 +1636,7 @@ $('#nav').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)
   location.hash=id});
 function readHash(){const h=location.hash.slice(1);SC.pinned=PINNABLE.includes(h)?h:null;if(SC.pinned&&SC.cur>=0&&SC.list[SC.cur].id!=='intro')go(SC.pinned);updNav()}
 window.addEventListener('hashchange',readHash);
-let navT=0;function showNav(){$('#nav').classList.add('show');clearTimeout(navT);navT=setTimeout(()=>$('#nav').classList.remove('show'),2800)}
+let navT=0;function showNav(e){if(e?.target?.closest?.('.sbtn,#notary'))return;$('#nav').classList.add('show');clearTimeout(navT);navT=setTimeout(()=>$('#nav').classList.remove('show'),2800)}
 window.addEventListener('mousemove',showNav);window.addEventListener('touchstart',showNav,{passive:true});
 window.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&NT.open){ntClose();return}
