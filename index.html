@@ -188,6 +188,10 @@ html.overlay #ticker{display:flex;position:fixed;left:2vw;right:2vw;bottom:2.5vh
   html.overlay #ticker .bar{min-width:35px}
 }
 @media(prefers-reduced-motion:reduce){.scene,.scene.out{transition:none;transform:none}#stage.kick,body.glitch #stage,body.glitch #ticker,#s-outro.on .wm{animation:none}}
+#availability{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.9);padding:20vw;text-align:center;font:500 clamp(12px,1.2vw,17px)/1.6 Arial;color:#9aa0bd}
+#availability[hidden]{display:none}
+@media(max-height:500px){#hudCap{display:none}#hud{font-size:10px}#status{font-size:10px}.nt-card{max-height:92vh}}
+@media(max-width:380px){#hudH{max-width:94vw}#nav button{padding:5px 7px}}
 </style>
 </head>
 <body>
@@ -215,6 +219,7 @@ html.overlay #ticker{display:flex;position:fixed;left:2vw;right:2vw;bottom:2.5vh
   <section class="scene" id="s-pillars"><canvas id="pil" class="full"></canvas></section>
   <section class="scene" id="s-outro"><div class="wm"><div class="wm1">network of momentum</div><div class="wm2">zenon · live from public nodes</div></div><canvas id="fx2" class="full"></canvas></section>
   <canvas id="bfx" class="full"></canvas>
+  <div id="availability" role="status" aria-live="polite" hidden></div>
   <div id="epoch">
     <div class="bar"><div class="f1" id="eF1"></div><div class="f2" id="eF2"></div></div>
     <div class="stats">
@@ -288,6 +293,7 @@ function shade(h,k){const A=rgb(h);return`rgb(${Math.min(255,Math.round(A[0]*k))
 function fit(cv){const dpr=Math.min(2,window.devicePixelRatio||1);const w=cv.offsetWidth||1,h=cv.offsetHeight||1;const W=Math.round(w*dpr),H=Math.round(h*dpr);if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,w,h}}
 function wrapText(ctx,text,x,y,maxWidth,lineHeight=17){const words=String(text).split(' '),lines=[];let line='';for(const word of words){const next=line?line+' '+word:word;if(line&&ctx.measureText(next).width>maxWidth){lines.push(line);line=word}else line=next}if(line)lines.push(line);lines.forEach((s,i)=>ctx.fillText(s,x,y+i*lineHeight));return lines.length}
 function legendRows(ctx,items,w,y,lineHeight=18){const rows=[[]],width=item=>ctx.measureText(item[1]).width+32;for(const item of items){const row=rows[rows.length-1];if(row.length&&row.reduce((n,k)=>n+width(k),0)+width(item)>w*.9)rows.push([item]);else row.push(item)}rows.forEach((row,i)=>{let x=(w-row.reduce((n,k)=>n+width(k),0))/2;for(const[color,label]of row){ctx.fillStyle=color;ctx.fillRect(x,y+i*lineHeight-8,9,9);ctx.fillStyle='#8a90a8';ctx.textAlign='left';ctx.fillText(label,x+14,y+i*lineHeight);x+=width([color,label])}})}
+function contentTop(h,fraction=.18,extra=0){const hud=$('#hud').getBoundingClientRect(),stage=$('#stage').getBoundingClientRect();return Math.max(h*fraction,Math.min(h*.38,hud.bottom-stage.top+18)+extra)}
 function ticks(max,n=3){let raw=max/n;const p=Math.pow(10,Math.floor(Math.log10(raw||1)));const f=raw/p;let st=(f<=1?1:f<=2?2:f<=5?5:10)*p;const out=[];for(let v=0;v<=max+1e-9;v+=st)out.push(+v.toFixed(6));return out}
 const bus={L:{},on(e,f){(this.L[e]=this.L[e]||[]).push(f)},emit(e,a){(this.L[e]||[]).forEach(f=>{try{f(a)}catch(err){console.error(err)}})}};
 
@@ -316,6 +322,7 @@ function classify(b){
   const v=parseInt((b.hash||'80').slice(0,2),16)/255;
   return{kind,sys,s,v,amt:(t===2||t===4)?amt:0,sym,hash:b.hash||String(Math.random()),plasma:b.usedPlasma||0,type:t,
     asset:b.tokenStandard,from:b.address||'',to:b.toAddress||'',ackH:(b.momentumAcknowledged&&b.momentumAcknowledged.height)||0, // ackH: lower time bound
+    plasmaKnown:Number.isFinite(b.usedPlasma)&&b.usedPlasma>=0,diffKnown:Number.isFinite(b.difficulty)&&b.difficulty>=0,fusedKnown:Number.isFinite(b.fusedPlasma)&&b.fusedPlasma>=0,
     fromHash:b.fromBlockHash&&!/^0+$/.test(b.fromBlockHash)?b.fromBlockHash:'',diff:b.difficulty||0,pow:(b.difficulty||0)>0,fused:b.fusedPlasma||0};
 }
 function blockColor(b){const base=(KINDS[b.kind]||KINDS.contract).c;return shade(base,(b.sys?.6:1)*(.86+b.v*.26))}
@@ -411,21 +418,37 @@ async function connectNode(recovering){
 }
 function reconnect(){if(S.mode==='sim')return;S.mode='reconnecting';setStatus('reconnecting');setTimeout(()=>connectNode(true),0)}
 node.onDown=reconnect;
+function validateRange(list,from,count){
+  if(!Array.isArray(list)||list.length!==count)throw new Error('incomplete momentum range');
+  let previous=S.byH.get(from-1);
+  for(let i=0;i<list.length;i++){const d=list[i],m=d&&d.momentum,known=m&&S.byH.get(m.height);
+    if(!m||m.height!==from+i||!Number.isSafeInteger(m.timestamp)||m.timestamp<GENESIS_TS||(m.timestamp-GENESIS_TS)%TICK!==0||!/^[0-9a-f]{64}$/i.test(m.hash||'')||!Array.isArray(d.blocks)||d.blocks.some(b=>!b||typeof b!=='object')||(previous&&m.timestamp<=previous.ts)||(known&&known.hash!==m.hash))throw new Error('invalid or conflicting momentum range');
+    previous={ts:m.timestamp};
+  }
+  const next=S.byH.get(from+count);if(next&&previous&&previous.ts>=next.ts)throw new Error('nonmonotonic momentum boundary');
+  return list;
+}
+async function readRange(from,count,timeout=15000){const r=await node.call('ledger.getDetailedMomentumsByHeight',[from,count],timeout);return validateRange(r&&r.list,from,count)}
 async function onConnected(){
   const socket=node.ws,check=()=>{if(!node.alive||node.ws!==socket||S.mode==='sim')throw new Error('connection superseded')};
   node.onNote=p=>{if(S.mode==='live'&&p&&Array.isArray(p.result))for(const x of p.result)if(x&&Number.isSafeInteger(x.height)&&x.hash&&!x.address)onMomentumNote(x.height)};
   await node.call('ledger.subscribe',['momentums'],3000);check();
   const f=await node.call('ledger.getFrontierMomentum',[],4000);check();
   if(!freshFrontier(f))throw new Error('stale or invalid frontier');
-  if(!S.ms.length){
-    const from=Math.max(1,f.height-999),r=await node.call('ledger.getDetailedMomentumsByHeight',[from,f.height-from+1],8000);check();
-    if(!r||!Array.isArray(r.list)||!r.list.length)throw new Error('empty momentum response');
-    ingest(r.list,false);
-  }else{await catchUp(f.height);check()}
+  const refresh=S.ms.length&&f.height-S.frontier>WINDOW;wantH=f.height;
+  if(!S.ms.length||refresh){
+    const from=Math.max(1,f.height-999),list=await readRange(from,f.height-from+1,8000);check();
+    if(refresh){S.ms=[];S.byH.clear();S.bySlot.clear();S.frontier=0;S.lastTs=0;S.hist=[];S.hs=null;CH.built=false;GW.last=-1}
+    ingest(list,false);
+  }else{
+    const overlap=await node.call('ledger.getMomentumsByHeight',[S.frontier,1],4000);check();
+    if(!overlap||!overlap.list||overlap.list[0]?.hash!==S.byH.get(S.frontier)?.hash)throw new Error('node history differs from the loaded snapshot');
+    await catchUp(f.height);check();
+  }
   if(!freshFrontier({height:S.frontier,timestamp:S.lastTs})||S.frontier<f.height)throw new Error('incomplete frontier data');
   S.mode='live';S.node=host(node.url);setStatus('live');lastNote=Date.now();markReady();
   loadPillars();if(!S.hs)loadHistory();loadOlder();loadGenesis();
-  if(!timersOn){timersOn=true;setInterval(()=>{if(S.mode==='live')loadPillars()},60000);setInterval(checkConnection,5000)}
+  if(!timersOn){timersOn=true;setInterval(()=>{if(S.mode==='live'){loadPillars();if(!S.hs)loadHistory();if(S.ms.length<WINDOW-5)loadOlder()}},60000);setInterval(checkConnection,5000)}
 }
 async function checkConnection(){
   if(S.mode!=='live'||!node.alive)return;
@@ -435,35 +458,35 @@ async function checkConnection(){
 }
 function onMomentumNote(h){lastNote=Date.now();if(h>S.frontier)catchUp(h)}
 async function catchUp(h){
+  if(!Number.isSafeInteger(h)||h<1)return;
+  if(h-S.frontier>WINDOW){node.close();reconnect();return}
   wantH=Math.max(wantH,h);if(catching)return;catching=true;
-  try{while(wantH>S.frontier&&node.alive){
-    const from=S.frontier+1,cnt=Math.min(1000,wantH-S.frontier);
-    const r=await node.call('ledger.getDetailedMomentumsByHeight',[from,cnt],30000);
-    if(!r||!r.list||!r.list.length)break;
-    ingest(r.list,cnt<=4);
-  }}catch(e){}
-  catching=false;
+  try{while(wantH>S.frontier&&node.alive){const from=S.frontier+1,count=Math.min(1000,wantH-S.frontier);const list=await readRange(from,count);ingest(list,count<=4)}}
+  catch(e){if(S.mode==='live'){node.close();reconnect()}else throw e}finally{catching=false}
 }
 async function loadOlder(){
   if(loadingOlder)return;loadingOlder=true;
   try{while(S.mode==='live'&&node.alive&&S.ms.length<WINDOW-5){
     const first=S.ms[0].h;if(first<=1)break;
     const cnt=Math.min(1000,first-1,WINDOW-S.ms.length);
-    const r=await node.call('ledger.getDetailedMomentumsByHeight',[first-cnt,cnt],30000);
-    ingest(r.list,false);await sleep(350);
+    const list=await readRange(first-cnt,cnt);
+    ingest(list,false);await sleep(350);
   }}catch(e){}
   loadingOlder=false;
 }
 async function loadGenesis(){try{const g=(await node.call('ledger.getMomentumsByHeight',[1,1])).list[0];let d=(g&&g.data)||'';try{d=atob(d)}catch(e){}const parts=d.split('#');if(parts.length>=3&&/^[0-9a-f]{64}$/.test(parts[0]))S.genesis={btc:parts[0],phrases:parts.slice(1)}}catch(e){}}
 async function loadPillars(){try{const p=await node.call('embedded.pillar.getAll',[0,500]);if(p&&p.list)setPillars(p.list)}catch(e){}}
 async function loadHistory(){
+  const socket=node.ws;
   try{
-    const f=S.frontier,N=240,hs=[];for(let i=0;i<N;i++)hs.push(Math.max(1,Math.round(1+i*(f-1)/(N-1))));
-    const res=await node.batch(hs.map(h=>['ledger.getMomentumsByHeight',[h,1]]));
-    const pts=[];res.forEach(r=>{const m=r.status==='fulfilled'&&r.value&&r.value.list&&r.value.list[0];if(m)pts.push({h:m.height,ts:m.timestamp})});
-    if(pts.length>20){S.hist=pts;bus.emit('history')}
-  }catch(e){console.warn('history',e)}
+    const f=S.frontier,N=Math.min(240,f),heights=[...new Set(Array.from({length:N},(_,i)=>Math.max(1,Math.round(1+i*(f-1)/Math.max(1,N-1)))))];
+    const res=await node.batch(heights.map(h=>['ledger.getMomentumsByHeight',[h,1]]));
+    if(node.ws!==socket||S.mode!=='live')return;
+    const points=[];res.forEach((r,i)=>{const m=r.status==='fulfilled'&&r.value?.list?.[0];if(m&&m.height===heights[i]&&Number.isSafeInteger(m.timestamp)&&m.timestamp>=GENESIS_TS&&(!points.length||m.timestamp>points.at(-1).ts))points.push({h:m.height,ts:m.timestamp})});
+    if(points.length>=2){S.hist=points;historyTip();bus.emit('history')}
+  }catch(e){console.warn('history unavailable')}
 }
+function historyTip(){const last=S.ms.at(-1),sample=S.hist.at(-1);if(last&&sample&&last.h>sample.h){S.hist[S.hist.length-1]={h:last.h,ts:last.ts};bus.emit('history')}}
 
 /* ---------- simulation (only when no node is reachable, clearly labelled) ---------- */
 const EMB={pillar:'z1qxemdeddedxpyllarxxxxxxxxxxxxxxxsy3fmg',sentinel:'z1qxemdeddedxsentynelxxxxxxxxxxxxxwy0r2r',stake:'z1qxemdeddedxstakexxxxxxxxxxxxxxxxjv8v62',plasma:'z1qxemdeddedxplasmaxxxxxxxxxxxxxxxxsctrp',liquidity:'z1qxemdeddedxlyquydytyxxxxxxxxxxxxflaaae',accelerator:'z1qxemdeddedxaccelerat0rxxxxxxxxxxp4tk22',token:'z1qxemdeddedxt0kenxxxxxxxxxxxxxxxxh9amk0'};
@@ -511,25 +534,29 @@ function setStatus(m){
 }
 function beat(){const el=$('#status');el.classList.add('beat');setTimeout(()=>el.classList.remove('beat'),500)}
 // Two time axes: momentum height (events) and slot (clock ticks since genesis). MISSED = share of ticks with no momentum.
-function axes(h,ts,withBtc){
-  const sl=Math.floor((ts-GENESIS_TS)/TICK),miss=sl>0?Math.max(0,(1-h/(sl+1))*100):0;
+function axes(h,ts,withBtc,observedTs=ts){
+  const sl=Math.floor((ts-GENESIS_TS)/TICK),observed=slotOf(observedTs),miss=observed>0?Math.max(0,(1-h/(observed+1))*100):0;
   return`MOMENTUM ${fmtInt(h)} · SLOT ${fmtInt(sl)} · MISSED ${miss.toFixed(2)} %`+(withBtc&&S.btc?` · BTC ${fmtInt(S.btc)}`:'');
 }
 /* ---------- Bitcoin: blocks from a mempool.space-compatible API (public, CORS-enabled). Optional everywhere. ---------- */
-const BT={blocks:[],byH:new Map(),flash:0};
-function btcMerge(list,live){
-  let top=false;
-  for(const b of list||[]){if(!b||!b.height||BT.byH.has(b.height))continue;
-    const o={h:b.height,ts:b.timestamp,tx:b.tx_count||0,pool:(b.extras&&b.extras.pool&&b.extras.pool.name)||''};
-    BT.byH.set(o.h,o);BT.blocks.push(o);if(o.h>S.btc){S.btc=o.h;top=true}}
-  BT.blocks.sort((a,b)=>a.h-b.h);while(BT.blocks.length>40)BT.byH.delete(BT.blocks.shift().h);
-  if(top&&live){BT.flash=performance.now();sndBtc();const b=BT.byH.get(S.btc);bus.emit('btcblock',{b,prev:BT.byH.get(S.btc-1)})}
+const BT={blocks:[],byH:new Map(),flash:0,revision:0};
+function btcMerge(list,live,authoritative=false){
+  const valid=(Array.isArray(list)?list:[]).filter(b=>b&&Number.isSafeInteger(b.height)&&b.height>0&&Number.isFinite(b.timestamp)&&b.timestamp>=0).sort((a,b)=>a.height-b.height);
+  if(!valid.length)return;const oldTip=S.btc;
+  if(authoritative){const tip=valid.at(-1).height;BT.blocks=BT.blocks.filter(b=>b.h<=tip);BT.byH=new Map(BT.blocks.map(b=>[b.h,b]))}
+  for(const b of valid){const existing=BT.byH.get(b.height),hash=typeof b.id==='string'?b.id:'';
+    if(existing&&existing.hash&&hash&&existing.hash!==hash){BT.blocks=BT.blocks.filter(x=>x.h<b.height);BT.byH=new Map(BT.blocks.map(x=>[x.h,x]))}
+    const o={h:b.height,ts:b.timestamp,hash,tx:b.tx_count||0,pool:b.extras?.pool?.name||''};
+    const index=BT.blocks.findIndex(x=>x.h===o.h);if(index>=0)BT.blocks[index]=o;else BT.blocks.push(o);BT.byH.set(o.h,o);
+  }
+  BT.blocks.sort((a,b)=>a.h-b.h);while(BT.blocks.length>40)BT.byH.delete(BT.blocks.shift().h);S.btc=BT.blocks.at(-1)?.h||0;BT.revision++;
+  if(S.btc>oldTip&&live){BT.flash=performance.now();sndBtc();const b=BT.byH.get(S.btc);bus.emit('btcblock',{b,prev:BT.byH.get(S.btc-1)})}
 }
 let btcWs=null,btcTimer=null,btcRetry=null,btcController=new AbortController();
 async function btcFetch(route){const r=await fetch(BTC_API+route,{cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer',signal:AbortSignal.any([btcController.signal,AbortSignal.timeout(8000)])});if(!r.ok)throw new Error('Bitcoin source unavailable');return r}
 async function btcRefresh(live){try{
-  const r=await btcFetch('/api/v1/blocks'),list=await r.json();if(S.mode==='sim')return;btcMerge(list,live);
-  if(BT.blocks.length&&BT.blocks.length<20){const r2=await btcFetch('/api/v1/blocks/'+(BT.blocks[0].h-1)),older=await r2.json();if(S.mode!=='sim')btcMerge(older,false)}
+  const revision=BT.revision,r=await btcFetch('/api/v1/blocks'),list=await r.json();if(S.mode==='sim'||revision!==BT.revision)return;btcMerge(list,live,true);
+  if(BT.blocks.length&&BT.blocks.length<20){const revision=BT.revision,r2=await btcFetch('/api/v1/blocks/'+(BT.blocks[0].h-1)),older=await r2.json();if(S.mode!=='sim'&&revision===BT.revision)btcMerge(older,false)}
 }catch(e){}}
 function btcSocket(){if(S.mode==='sim')return;try{
   const ws=btcWs=new WebSocket(BTC_API.replace(/^http/,'ws')+'/api/v1/ws');
@@ -537,7 +564,7 @@ function btcSocket(){if(S.mode==='sim')return;try{
   ws.onmessage=e=>{if(S.mode==='sim')return;let d;try{d=JSON.parse(e.data)}catch(x){return}if(d&&d.block)btcMerge([d.block],true);else if(d&&Array.isArray(d.blocks))btcMerge(d.blocks,false)};
   ws.onerror=()=>{};ws.onclose=()=>{if(S.mode!=='sim')btcRetry=setTimeout(btcSocket,20000)};
 }catch(e){}}
-async function btcPoll(){if(S.mode==='sim')return;try{const r=await btcFetch('/api/blocks/tip/height'),h=parseInt(await r.text(),10);if(h>S.btc&&S.mode!=='sim')await btcRefresh(true)}catch(e){}}
+async function btcPoll(){if(S.mode==='sim')return;try{const r=await btcFetch('/api/blocks/tip/height'),h=parseInt(await r.text(),10);if(Number.isSafeInteger(h)&&h>0&&(h!==S.btc||BT.blocks.length<20)&&S.mode!=='sim')await btcRefresh(true)}catch(e){}}
 function btcStart(){if(S.mode==='sim')return;btcRefresh(false);btcSocket();btcTimer=setInterval(btcPoll,45000)}
 function btcStop(){clearInterval(btcTimer);clearTimeout(btcRetry);btcController.abort();if(btcWs){btcWs.onclose=null;btcWs.close();btcWs=null}}
 function btcSim(){ // only in SIMULATED DATA mode: memoryless block arrivals averaging 10 minutes
@@ -550,7 +577,7 @@ let hudLast=0;
 function hud(t){
   if(t-hudLast<180)return;hudLast=t;const s=SC.list[SC.cur];
   if(s&&s.id==='history'&&HI.hudTs){$('#hudDate').textContent=fmtDate(HI.hudTs);$('#hudH').textContent=axes(HI.hudH,HI.hudTs,false)}
-  else{$('#hudDate').textContent=fmtDate(Math.floor(serverNow()));$('#hudH').textContent=S.frontier?axes(S.frontier,serverNow(),true):'MOMENTUM —'}
+  else{$('#hudDate').textContent=fmtDate(Math.floor(serverNow()));$('#hudH').textContent=S.frontier?axes(S.frontier,serverNow(),true,S.lastTs):'MOMENTUM —'}
   const cap=s&&s.caption?s.caption():'';if($('#hudCap').textContent!==cap)$('#hudCap').textContent=cap;
 }
 
@@ -583,7 +610,7 @@ INTRO.enter=function(){this.build();this.hold=0};
 INTRO.frame=function(el,dt,t,leaving){
   const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);
   const target=SC.pinned&&byId(SC.pinned);
-  const waiting=!S.ready||(target&&target.ready&&!target.ready());
+  const waiting=!S.ready;
   let e=el-this.hold;
   if(!leaving&&e>3.6&&waiting){this.hold+=dt;e=3.6}
   $('#introSub').textContent=S.mode==='connecting'?`connecting to ${host(node.url)}…`:'loading momentums…';
@@ -634,8 +661,8 @@ OUTRO.zeno=function(ctx,w,h,el,t){ // the slot (tortoise) always ahead of the he
   ctx.fillStyle='#6ff34d';ctx.fillRect(L,y1,xs-L,bh);ctx.fillStyle='#4f7dff';ctx.fillRect(L,y2,xh-L,bh);ctx.fillStyle='rgba(226,69,60,.9)';ctx.fillRect(xh,y2,Math.max(0,xs-xh),bh);
   ctx.textAlign='left';ctx.textBaseline='bottom';ctx.font='600 12px Arial';ctx.fillStyle='#6ff34d';ctx.fillText(`SLOT · the tortoise · ${fmtInt(sl)}`,L,y1-6);ctx.fillStyle='#7f9dff';ctx.fillText(`HEIGHT · Achilles · ${fmtInt(Math.round(hh))}`,L,y2-6);
   ctx.textAlign='right';ctx.fillStyle='#ff8a6b';ctx.fillText(`${fmtInt(Math.max(0,sl-Math.round(hh)))} slots behind`,L+pw,y2-6);
-  ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillStyle='#8a90a8';ctx.font='500 12px Arial';ctx.fillText(p>=1?'now':fmtDate(Math.round(tp),false),w/2,y1-28);
-  if(p>=1){ctx.fillStyle='#c9cde0';ctx.font='500 14px Arial';ctx.fillText('every missed slot puts the tortoise further ahead, for good',w/2,h*.84)}
+  ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillStyle='#8a90a8';ctx.font='500 12px Arial';ctx.fillText(p>=1?'latest observed':fmtDate(Math.round(tp),false),w/2,y1-28);
+  if(p>=1){ctx.fillStyle='#c9cde0';ctx.font='500 14px Arial';ctx.fillText('confirmed gaps remain part of the observed history',w/2,h*.84)}
   ctx.globalAlpha=1;
 };
 
@@ -644,7 +671,7 @@ OUTRO.zeno=function(ctx,w,h,el,t){ // the slot (tortoise) always ahead of the he
    ============================================================ */
 const BL={id:'blocks',el:$('#s-blocks'),dur:15000,cv:$('#mosaic'),cc:$('#inchart'),sq:new Map(),G:24,dirty:true,fresh:new Set(),enterT:0};
 BL.ready=()=>S.ready;
-BL.caption=()=>{if(!S.ms.length)return'';const sp=(serverNow()-S.ms[0].ts)/3600;let n=0;for(const r of S.ms)n+=r.n;return`Account blocks · last ${sp.toFixed(1)} h · ${fmtInt(n)} blocks · 1 square = 1 block · point at one for its time bracket`};
+BL.caption=()=>{if(!S.ms.length)return'';const total=S.ms.reduce((n,r)=>n+r.n,0);return`Account blocks · ${fmtInt(Math.min(1600,total))} of ${fmtInt(total)} shown · loaded span ${((serverNow()-S.ms[0].ts)/3600).toFixed(1)} h`};
 BL.keep=()=>!!BL.hl; // keep the scene while someone is reading a block card
 const hms=ts=>{const d=new Date(ts*1000);return pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds())};
 const BTYPE={1:'genesis',2:'user send',3:'user receive',4:'contract send',5:'contract receive'};
@@ -751,7 +778,7 @@ BL.chart=function(t){
    ============================================================ */
 const CH={id:'chain',el:$('#s-chain'),dur:31000,track:$('#track'),div:$('#divider'),conf:[],pend:[],NC:7,NP:3,built:false,lastNt:0,warnUntil:0,agoT:0};
 CH.ready=()=>S.ready&&S.ms.length>0;
-CH.caption=()=>`Momentums · one tick every ${TICK} s · ${S.pillars.length||'—'} pillars take turns · arcs: the momentum each block acknowledged`;
+CH.caption=()=>'Observed momentums · arcs show acknowledgements · future cubes show scheduled slots';
 function cubeEl(){const e=document.createElement('div');e.className='mb';
   e.innerHTML='<div class="h"></div><div class="cube"><div class="face f-left"><i class="p"></i><i class="c"></i></div><div class="face f-top"><i class="p"></i><i class="c"></i></div><div class="face f-front"><i class="p"></i><i class="c"></i><div class="fill"></div><canvas></canvas><div class="t"><div class="a"></div><div class="b"></div><div class="c2"></div><div class="e"></div></div></div></div><div class="pr"></div>';
   e._q={h:e.querySelector('.h'),a:e.querySelector('.a'),b:e.querySelector('.b'),c:e.querySelector('.c2'),e:e.querySelector('.e'),fill:e.querySelector('.fill'),cv:e.querySelector('canvas'),pr:e.querySelector('.pr')};return e}
@@ -816,14 +843,8 @@ CH.advance=function(r){
 };
 CH.onLive=function(list){if(!this.built)return;list.forEach((r,i)=>setTimeout(()=>this.advance(r),i*350))};
 CH.tickPend=function(){
-  if(!this.pend.length)return;const now=serverNow();let nt=S.lastTs+TICK;while(now>nt+3.5)nt+=TICK;
-  if(this.lastNt&&nt>this.lastNt&&S.lastTs<this.lastNt)this.warnUntil=now+3;this.lastNt=nt;
-  const rem=nt-now;
-  this.pend.forEach((p,j)=>{const q=p.e._q,rj=rem+j*TICK,warn=j===0&&now<this.warnUntil;
-    q.h.textContent='#'+fmtInt(S.frontier+1+j);
-    q.a.textContent=warn?'slot skipped':j===0?'next momentum':'';q.a.classList.toggle('warn',warn);
-    q.b.textContent=rj>.4?`in ${Math.ceil(rj)} s`:'now…';q.c.textContent=j===0?`~${TICK} s tick`:'';q.e.textContent='';
-    q.fill.style.height=j===0?(clamp(1-rem/TICK,0,1)*100).toFixed(1)+'%':'0%';q.pr.textContent=''});
+  if(!this.pend.length)return;const now=serverNow(),next=(Math.floor(now/TICK)+1)*TICK,remaining=next-now;
+  this.pend.forEach((p,j)=>{const q=p.e._q;q.h.textContent='SLOT '+fmtInt(slotOf(next+j*TICK));q.a.textContent=j===0?'next scheduled slot':'future slot';q.a.classList.remove('warn');q.b.textContent=`in ${Math.ceil(remaining+j*TICK)} s`;q.c.textContent='production not guaranteed';q.e.textContent='';q.fill.style.height=j===0?(clamp(1-remaining/TICK,0,1)*100)+'%':'0%';q.pr.textContent=''})
 };
 CH.refreshNames=function(){this.conf.forEach((c,i)=>{const sp=c.e._q.pr.querySelector('span');if(sp){const nm=pillarName(c.r.producer);sp.textContent='◆ '+nm;sp.className=isFollow(nm)?'fw':''}})};
 CH.enter=function(){this.enterT=performance.now();if(!this.built)this.build()};
@@ -851,7 +872,7 @@ TL.compute=function(pw){
 TL.enter=function(){this.enterT=performance.now();this.dirty=true};
 TL.frame=function(el,dt,t){
   const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);if(!S.ms.length)return;
-  const L=w*.06,pw=w-2*L,top=h*.17,base=h*.6;
+  const L=w*.06,pw=w-2*L,top=contentTop(h,.17),base=h*.6;
   if(this.dirty||!this.cache||t-this.cacheT>3000||Math.abs(this.cache.pw-pw)>2)this.compute(pw);
   const c=this.cache,cw=pw/c.ncol,u=clamp((base-top)/c.maxS,2,14),rev=ease(clamp(el/1.7,0,1)),from=Math.floor(c.ncol*(1-rev));
   const expPer=c.per/TICK;
@@ -871,19 +892,14 @@ TL.frame=function(el,dt,t){
 const EP={el:$('#epoch'),t:0};
 function updEpoch(force){
   const t=performance.now();if(!force&&t-EP.t<1000)return;EP.t=t;
-  const now=serverNow(),e=Math.floor((now-GENESIS_TS)/EPOCH),es=GENESIS_TS+e*EPOCH,el=now-es,prog=el/EPOCH,cap=EPOCH/TICK;
-  let produced=null;
-  if(S.ms.length&&S.ms[0].ts<=es+TICK){produced=0;for(let i=S.ms.length-1;i>=0&&S.ms[i].ts>=es;i--)produced++}
-  if(produced==null){let p=0;for(const x of S.pillars)p+=(x.currentStats&&x.currentStats.producedMomentums)||0;produced=p}
-  const exp=Math.max(1,el/TICK),fill=clamp(produced/exp,0,1);
-  $('#eF1').style.width=(produced/cap*100).toFixed(2)+'%';$('#eF2').style.left=(produced/cap*100).toFixed(2)+'%';$('#eF2').style.width=(Math.max(0,exp-produced)/cap*100).toFixed(2)+'%';
-  $('#eAvg').textContent=produced>0?`~${(el/produced).toFixed(2)} s`:'—';
-  const fb=$('#eFill');fb.textContent=`${fill>=.97?'▲':'▼'} ${(fill*100).toFixed(1)} %`;fb.className=fill>=.97?'up':fill>=.9?'mid':'down';
-  let wf='';if(S.ms.length>100){const a=S.ms[0],b=S.ms[S.ms.length-1];wf=` · last ${((b.ts-a.ts)/3600).toFixed(0)} h: ${(S.ms.length/((b.ts-a.ts)/TICK+1)*100).toFixed(1)} %`}
-  $('#eFillL').textContent='Slots filled · this epoch'+wf;
-  $('#eH').textContent='Momentum '+fmtInt(S.frontier);
-  $('#eEnd').textContent=`Epoch ${fmtInt(e)} ends at ${fmtDate(es+EPOCH,false)} ${hhmm(es+EPOCH)} UTC`;
-  $('#eProg').style.setProperty('--p',(prog*100).toFixed(2)+'%');$('#eProgT').textContent=`Epoch progress ${(prog*100).toFixed(1)} %`;
+  const now=serverNow(),e=Math.floor((now-GENESIS_TS)/EPOCH),es=GENESIS_TS+e*EPOCH,progress=clamp((now-es)/EPOCH,0,1),stats=epochStats(e*SLOTS_PER_EPOCH,Math.floor((now-GENESIS_TS)/TICK)),known=stats.prod+stats.miss,fill=known?stats.prod/known:0;
+  $('#eF1').style.width=(stats.prod/SLOTS_PER_EPOCH*100)+'%';$('#eF2').style.left=(stats.prod/SLOTS_PER_EPOCH*100)+'%';$('#eF2').style.width=(stats.miss/SLOTS_PER_EPOCH*100)+'%';
+  const records=S.ms.filter(r=>r.ts>=es&&r.ts<es+EPOCH),mean=records.length>1?(records.at(-1).ts-records[0].ts)/(records.length-1):null;
+  $('#eAvg').textContent=mean==null?'—':`${mean.toFixed(2)} s`;$('#eAvg').nextElementSibling.textContent='Mean interval · loaded epoch';
+  const fb=$('#eFill');fb.textContent=known?`${(fill*100).toFixed(1)} %`:'—';fb.className=fill>=.97?'up':fill>=.9?'mid':'down';
+  $('#eFillL').textContent=`Filled · observed epoch slots${stats.unk?` · ${fmtInt(stats.unk)} unloaded`:''}${stats.pending?` · ${stats.pending} pending`:''}`;
+  $('#eH').textContent='Momentum '+fmtInt(S.frontier);$('#eEnd').textContent=`Epoch ${fmtInt(e)} ends at ${fmtDate(es+EPOCH,false)} ${hhmm(es+EPOCH)} UTC`;
+  $('#eProg').style.setProperty('--p',(progress*100).toFixed(1)+'%');$('#eProgT').textContent=`Epoch progress ${(progress*100).toFixed(1)} %`;
 }
 
 /* ============================================================
@@ -891,7 +907,7 @@ function updEpoch(force){
    ============================================================ */
 const HI={id:'history',el:$('#s-history'),dur:16000,cv:$('#hist'),hudTs:0,hudH:0};
 HI.ready=()=>!!S.hs;
-HI.caption=()=>'Since genesis · 24 Nov 2021 · seconds per momentum and missed slots';
+HI.caption=()=>`Sampled history · ${S.hist.length} points · smoothed intervals and cumulative missed share`;
 bus.on('history',()=>{
   const H=S.hist,t=[],iv=[],miss=[],hh=[];
   for(let i=1;i<H.length;i++){const a=H[i-1],b=H[i],dh=b.h-a.h;if(dh<=0)continue;t.push(b.ts);hh.push(b.h);iv.push((b.ts-a.ts)/dh);miss.push(Math.max(0,(1-b.h/((b.ts-GENESIS_TS)/TICK+1))*100))}
@@ -901,7 +917,7 @@ bus.on('history',()=>{
 HI.exit=function(){this.hudTs=0};
 HI.frame=function(el,dt,t){
   const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);const D=S.hs;if(!D)return;
-  const n=D.t.length,L=w*(w<700?.12:.06),R=w*(w<700?.13:.06),top=h*(w<700?.25:.15),bot=h*.6,pw=w-L-R,ph=bot-top;
+  const n=D.t.length,L=w*(w<700?.12:.06),R=w*(w<700?.13:.06),top=contentTop(h,w<700?.25:.15,40),bot=h*.6,pw=w-L-R,ph=bot-top;
   const t0=GENESIS_TS,t1=D.t[n-1],X=ts=>L+(ts-t0)/(t1-t0)*pw;
   const so=[...D.iv].sort((a,b)=>a-b);let ivMin=Math.min(10,so[0]),ivMax=Math.max(so[Math.floor((so.length-1)*.985)],ivMin+.5);
   const mMax=Math.max(1,...D.miss)*1.15;
@@ -910,7 +926,7 @@ HI.frame=function(el,dt,t){
   let k=0;while(k<n-1&&D.t[k+1]<=tp)k++;
   // HUD follows the sampled chain itself, so its MISSED % traces the red line during the sweep
   let hh;if(tp<=D.t[0])hh=lerp(1,D.h[0],(tp-t0)/Math.max(1,D.t[0]-t0));else if(k>=n-1)hh=D.h[n-1];else hh=lerp(D.h[k],D.h[k+1],(tp-D.t[k])/Math.max(1,D.t[k+1]-D.t[k]));
-  if(p>=1){this.hudTs=Math.floor(serverNow());this.hudH=S.frontier}else{this.hudTs=Math.round(tp);this.hudH=Math.round(hh)}
+  if(p>=1){this.hudTs=D.t[n-1];this.hudH=D.h[n-1]}else{this.hudTs=Math.round(tp);this.hudH=Math.round(hh)}
   ctx.font='500 10px Arial';ctx.textBaseline='top';ctx.textAlign='center';ctx.fillStyle='#4f5672';
   for(let y=2022;y<=new Date(t1*1000).getUTCFullYear();y++){const ts=Date.UTC(y,0,1)/1000;if(ts<t0)continue;const x=X(ts);ctx.fillStyle='rgba(255,255,255,.05)';ctx.fillRect(x,top,1,ph);ctx.fillStyle='#4f5672';ctx.fillText(y,x,bot+8)}
   ctx.textAlign='left';ctx.textBaseline='middle';
@@ -950,7 +966,7 @@ function squarify(items,x,y,w,h){
   return out;
 }
 PI.layout=function(w,h){
-  const L=w*.05,T=h*.15,pw=w-2*L,ph=h*.7;
+  const L=w*.05,T=contentTop(h,.15),pw=w-2*L,ph=h*.85-T;
   const items=[...S.pillars].filter(p=>p.w>0).sort((a,b)=>b.w-a.w).map((p,i)=>{
     const ex=(p.currentStats&&p.currentStats.expectedMomentums)||0,pr=(p.currentStats&&p.currentStats.producedMomentums)||0,ra=ex?pr/ex:-1;
     const base=ra<0?'#2a3150':ra>=.97?'#58c94a':ra>=.85?'#d9c93f':ra>=.6?'#ff9d3b':'#e2453c';
@@ -979,7 +995,7 @@ PI.frame=function(el,dt,t){
     ctx.globalAlpha=1;
     if(fk>0&&this.last&&this.last.producer===r.p.producerAddress){const k=1-fk;ctx.globalAlpha=fk;ctx.fillStyle='#fff';ctx.font='700 14px Arial';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText('#'+fmtInt(this.last.h),cx,y-6-k*26);ctx.globalAlpha=1}
   }
-  if(this.last){const y=h*.9;ctx.font='500 12px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#6b7190';
+  this.last=S.ms.at(-1)||this.last;if(this.last){const y=h*(w<700?.88:.9);ctx.font='500 12px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#6b7190';
     wrapText(ctx,`LATEST #${fmtInt(this.last.h)} · ${pillarName(this.last.producer)} · ${this.last.n?this.last.n+' account block'+(this.last.n>1?'s':''):'empty'}`,w/2,y,w*.9,16)}
   const ky=h*.95;const keys=[['#58c94a','≥ 97 %'],['#d9c93f','85–97 %'],['#ff9d3b','60–85 %'],['#e2453c','< 60 %'],['#2a3150','no slot yet']];
   ctx.font='500 10px Arial';ctx.textBaseline='middle';legendRows(ctx,keys,w,ky-(w<700?12:0));
@@ -989,13 +1005,16 @@ PI.frame=function(el,dt,t){
    slot helpers (shared by the clock dial and the epoch rug)
    ============================================================ */
 function slotState(slot,cur,frac,first){
-  const m=S.bySlot.get(slot);
-  if(m)return{m,st:m.n?'blocks':'ok'};
+  const m=S.bySlot.get(slot);if(m)return{m,st:m.n?'blocks':'ok'};
   if(slot>cur)return{st:'future'};
-  if(S.mode==='reconnecting'&&slot>slotOf(S.lastTs))return{st:'unknown'};
-  if(slot<first)return{st:'unknown'};           // not loaded yet: never call it missed
-  if(slot===cur&&frac*TICK<3.5)return{st:'wait'}; // momentum normally lands < 1 s after the slot opens
+  if(slot<first)return{st:'unknown'};
+  if(slot>slotOf(S.lastTs))return{st:slot===cur?'wait':'pending'};
   return{st:'missed'};
+}
+function epochStats(s0,cur){
+  const first=firstSlot(),stats={prod:0,miss:0,blk:0,unk:0,rem:0,pending:0};
+  for(let slot=s0;slot<s0+SLOTS_PER_EPOCH;slot++){const state=slotState(slot,cur,0,first);if(state.m){stats.prod++;if(state.m.n)stats.blk++}else if(state.st==='missed')stats.miss++;else if(state.st==='unknown')stats.unk++;else if(state.st==='future')stats.rem++;else stats.pending++}
+  return stats;
 }
 const domColor=m=>{const b=m.blocks.find(x=>!x.sys)||m.blocks[0];return(KINDS[b.kind]||KINDS.contract).c};
 const firstSlot=()=>S.ms.length?S.ms[0].slot:Infinity;
@@ -1012,11 +1031,11 @@ DI.frame=function(el,dt,t){
   const now=serverNow(),pt=(now-GENESIS_TS)/TICK,cur=Math.floor(pt),frac=pt-cur,round=Math.floor(cur/ROUND),pos=cur-round*ROUND,first=firstSlot();
   if(round!==this.lastRound){if(this.lastRound>=0)this.anim=t;this.lastRound=round}
   const ak=this.anim?ease(clamp((t-this.anim)/1200,0,1)):1,intro=ease(clamp(el/1.3,0,1));
-  const m=Math.min(w,h*.92),narrow=m<640,cx=w/2,cy=h*.54,R0=m*(narrow?.3:.33)*(.86+.14*intro),thick=m*.058,thin=m*.011,N=narrow?5:9,inner=m*(narrow?.235:.165);
+  const m=Math.min(w,h*(h<500?.76:.92)),narrow=m<640,cx=w/2,cy=h*.54,R0=m*(narrow?.3:.33)*(.86+.14*intro),thick=m*.058,thin=m*.011,N=narrow?5:9,inner=m*(narrow?.235:.165);
   const r1=R0-thick/2-m*.02-thin/2,step=(r1-inner)/(N-1),seg=2*Math.PI/ROUND,gapA=Math.min(.035,3/R0);
   const radOf=e=>e<=0?R0:e<1?lerp(R0,r1,e):r1-(e-1)*step,thOf=e=>e<=0?thick:e<1?lerp(thick,thin,e):thin,alOf=e=>e<1?1:Math.max(.14,1-(e-1)*.1);
   const arc=(r,th,a0,a1)=>{ctx.beginPath();ctx.arc(cx,cy,r+th/2,a0,a1);ctx.arc(cx,cy,Math.max(0,r-th/2),a1,a0,true);ctx.closePath();ctx.fill()};
-  const COL={ok:'#4b44e4',missed:'#9a2b2b',unknown:'#191c30',future:'#141831'};
+  const COL={ok:'#4b44e4',missed:'#9a2b2b',pending:'#6b512a',unknown:'#191c30',future:'#141831'};
   // past rounds sink inward like tree rings (newest just inside the live ring)
   for(let i=N;i>=1;i--){const e=i-(1-ak);const rd=round-i,r=radOf(e),th=thOf(e),al=alOf(e)*intro;
     for(let s=0;s<ROUND;s++){const ss=slotState(rd*ROUND+s,cur,1,first),a0=-Math.PI/2+s*seg+gapA/2;
@@ -1030,7 +1049,7 @@ DI.frame=function(el,dt,t){
   // producer names around the live ring
   const fs=clamp(m*.0145,9,13);ctx.font=`500 ${fs}px Arial`;ctx.textBaseline='middle';
   for(let s=0;s<=pos;s++){const slot=round*ROUND+s,ss=slotState(slot,cur,frac,first);
-    let lb=ss.m?pillarName(ss.m.producer):ss.st==='missed'?'missed':ss.st==='wait'?'…':'';if(!lb)continue;if(lb.length>16)lb=lb.slice(0,15)+'…';
+    let lb=ss.m?pillarName(ss.m.producer):ss.st==='missed'?'missed':ss.st==='wait'||ss.st==='pending'?'pending':'';if(!lb)continue;const limit=w<700||h<500?10:16;if(lb.length>limit)lb=lb.slice(0,limit-1)+'…';
     const am=-Math.PI/2+(s+.5)*seg,rr=R0+thick/2+m*.014,left=Math.cos(am)<-1e-6;
     ctx.save();ctx.translate(cx,cy);ctx.rotate(am);
     ctx.fillStyle=ss.st==='missed'?'#ff6b4a':slot===cur?'#ffffff':(ss.m&&isFollow(pillarName(ss.m.producer))?'#6ff34d':'#8f95b2');
@@ -1049,7 +1068,7 @@ DI.frame=function(el,dt,t){
   ctx.fillStyle='#c9cde0';ctx.font=`500 ${clamp(m*.017,10,14)}px Arial`;if(last)ctx.fillText(`#${fmtInt(last.h)} · ${pillarName(last.producer)}`,cx,cy+m*.05);
   ctx.fillStyle=miss?'#ff8a6b':'#6b7190';ctx.font=`500 ${clamp(m*.015,9,12)}px Arial`;ctx.fillText(`this round  ${prod} produced · ${miss} missed`,cx,cy+m*.085);
   // legend
-  const keys=[['#4b44e4','momentum'],['#e8e04a','with account blocks'],['#9a2b2b','missed slot'],['#6ff34d','opening now']];
+  const keys=[['#4b44e4','momentum'],['#e8e04a','with account blocks'],['#9a2b2b','missed slot'],['#6ff34d','opening now'],['#6b512a','pending observation']];
   ctx.font='500 10px Arial';ctx.textAlign='left';const kw=k=>ctx.measureText(k[1]).width+34,rows=[[]];
   for(const k of keys){const row=rows[rows.length-1],rw=row.reduce((a,x)=>a+kw(x),0);if(row.length&&rw+kw(k)>w-24)rows.push([k]);else row.push(k)}
   rows.forEach((row,ri)=>{let kx=cx-row.reduce((a,x)=>a+kw(x),0)/2+10;const ky=h*.955-(rows.length-1-ri)*18;
@@ -1064,11 +1083,12 @@ const BC={id:'clocks',el:$('#s-clocks'),dur:21000,cv:$('#clk')};
 BC.ready=()=>S.ready&&BT.blocks.length>=3;
 BC.caption=()=>`Two clocks · Bitcoin ticks when work is found · Zenon ticks every ${TICK} s by schedule`;
 const dur=s=>{s=Math.max(0,Math.round(s));const m=Math.floor(s/60),r=s%60;return m?`${m}m ${pad(r)}s`:`${r}s`};
-function slotStats(ta,tb){ // slots whose start lies in [ta, tb)
-  const a=Math.ceil((ta-GENESIS_TS)/TICK),b=Math.ceil((tb-GENESIS_TS)/TICK)-1,first=firstSlot();let n=0,mo=0,miss=0,blk=0;
-  for(let s=a;s<=b;s++){n++;const m=S.bySlot.get(s);if(m){mo++;if(m.n)blk++}else if(s>=first)miss++}
-  return{n,mo,miss,blk};
+function slotStats(ta,tb){ // Slot starts in [ta, tb); only bounded gaps are counted as missed.
+  const a=Math.ceil((ta-GENESIS_TS)/TICK),b=Math.ceil((tb-GENESIS_TS)/TICK)-1,first=firstSlot(),cur=Math.floor((serverNow()-GENESIS_TS)/TICK);let n=0,mo=0,miss=0,blk=0,unknown=0,pending=0;
+  for(let slot=a;slot<=b;slot++){n++;const state=slotState(slot,cur,0,first);if(state.m){mo++;if(state.m.n)blk++}else if(state.st==='missed')miss++;else if(state.st==='unknown')unknown++;else pending++}
+  return{n,mo,miss,blk,unknown,pending};
 }
+const coverageText=st=>st.unknown||st.pending?` · ${st.unknown} unknown · ${st.pending} pending`:'';
 function cube2d(ctx,x,y,s,d,top,left,g0,g1){ // front face at (x,y); top/left faces offset up-left like the DOM cubes
   ctx.fillStyle=top;ctx.beginPath();ctx.moveTo(x-d,y-d);ctx.lineTo(x+s-d,y-d);ctx.lineTo(x+s,y);ctx.lineTo(x,y);ctx.closePath();ctx.fill();
   ctx.fillStyle=left;ctx.beginPath();ctx.moveTo(x-d,y-d);ctx.lineTo(x,y);ctx.lineTo(x,y+s);ctx.lineTo(x-d,y+s-d);ctx.closePath();ctx.fill();
@@ -1076,16 +1096,16 @@ function cube2d(ctx,x,y,s,d,top,left,g0,g1){ // front face at (x,y); top/left fa
 }
 BC.frame=function(el,dt,t){
   const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);if(!BT.blocks.length||!S.ms.length)return;
-  const now=serverNow(),narrow=w<760,span=narrow?3600:7200,L=w*.05,Rf=w*(narrow?.17:.12),pw=w-L-Rf,t0=now-span;
+  const now=serverNow(),short=h<520,narrow=w<760,span=narrow?3600:7200,L=w*.05,Rf=w*(narrow?.17:.12),pw=w-L-Rf,t0=now-span;
   const X=ts=>L+(ts-t0)/span*pw,xNow=X(now),G=GENESIS_TS;
-  const cs=clamp(Math.min(w*.04,h*.07),28,60),cd=cs*.16,yB=h*.47,yZ=h*.6,zH=Math.max(16,h*.07),yI=yZ+zH/2+24,yA=yI+40;
+  const cs=short?22:clamp(Math.min(w*.04,h*.07),28,60),cd=cs*.16,yB=h*(short?.46:.47),yZ=h*.56,zH=Math.max(12,h*(short?.05:.07)),yI=yZ+zH/2+(short?10:24),yA=yI+(short?20:40);
   const rev=ease(clamp(el/1.7,0,1));
   // headline numbers sit below the timeline so the cubes own the sky
-  const lastB=BT.blocks[BT.blocks.length-1],pt=(now-G)/TICK,frac=pt-Math.floor(pt),yH=Math.max(yA+44,h*.79),big=clamp(w*.019,17,28);
+  const lastB=BT.blocks[BT.blocks.length-1],pt=(now-G)/TICK,frac=pt-Math.floor(pt),yH=Math.max(yA+(short?24:32),h*(short?.73:.77)),big=short?20:clamp(w*.019,17,28);
   ctx.textBaseline='alphabetic';ctx.textAlign='left';
   ctx.fillStyle='#f7931a';ctx.font='600 12px Arial';ctx.fillText('BITCOIN',L,yH);
   ctx.fillStyle='#fff';ctx.font=`700 ${big}px Arial`;ctx.fillText('#'+fmtInt(S.btc),L,yH+big+6);
-  ctx.fillStyle='#8a90a8';ctx.font='500 12px Arial';ctx.fillText(narrow?`${dur(now-lastB.ts)} ago`:`${dur(now-lastB.ts)} since last block · random, ~10 min on average`,L,yH+big+26);
+  ctx.fillStyle='#8a90a8';ctx.font='500 12px Arial';ctx.fillText(lastB.ts>now?'miner timestamp ahead of local clock':narrow?`${dur(now-lastB.ts)} ago`:`${dur(now-lastB.ts)} since last block · random, ~10 min on average`,L,yH+big+26);
   ctx.textAlign='right';const xr=w-L;
   ctx.fillStyle='#5c8dff';ctx.font='600 12px Arial';ctx.fillText('ZENON',xr,yH);
   ctx.fillStyle='#fff';ctx.font=`700 ${big}px Arial`;ctx.fillText('#'+fmtInt(S.frontier),xr,yH+big+6);
@@ -1095,7 +1115,7 @@ BC.frame=function(el,dt,t){
   const s0=Math.ceil((t0-G)/TICK),cur=Math.floor(pt),first=firstSlot(),sw=Math.max(1,pw*TICK/span-.6);
   for(let s=s0;s<=cur;s++){const ss=slotState(s,cur,frac,first),x=X(G+s*TICK);
     if(ss.st==='blocks'){ctx.fillStyle=domColor(ss.m);ctx.fillRect(x,yZ-zH*.95,sw,zH*1.45)}
-    else{ctx.fillStyle=ss.st==='ok'?'#3a40b0':ss.st==='missed'?'#8a2626':ss.st==='wait'?'#6ff34d':'#171a2b';ctx.fillRect(x,yZ-zH/2,sw,zH)}}
+    else{ctx.fillStyle=ss.st==='ok'?'#3a40b0':ss.st==='missed'?'#8a2626':ss.st==='wait'?'#6ff34d':ss.st==='pending'?'#6b512a':'#171a2b';ctx.fillRect(x,yZ-zH/2,sw,zH)}}
   ctx.strokeStyle='rgba(92,141,255,.22)';ctx.lineWidth=1;
   for(let s=cur+1;X(G+s*TICK)<w-8;s++){const x=X(G+s*TICK);ctx.strokeRect(x+.5,yZ-zH/2+.5,Math.max(1,sw-1),zH-1)}
   // time axis
@@ -1108,11 +1128,11 @@ BC.frame=function(el,dt,t){
     const xb=Math.min(X(b.ts),xNow);
     ctx.strokeStyle='rgba(247,147,26,.55)';ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(xb+.5,yB+4);ctx.lineTo(xb+.5,yI+6);ctx.stroke();ctx.setLineDash([]);
     if(prev){const xa=Math.max(L,Math.min(X(prev.ts),xNow));if(b.ts<=prev.ts)iv.push({xa:xb-1,xb,txt:'⟲ time went back',warn:true,pt:true});
-      else{const st=slotStats(prev.ts,b.ts),d=b.ts-prev.ts,full=`${dur(d)} · ${st.n} slots · ${st.mo} momentums · ${st.miss} missed`,mid=`${dur(d)} · ${st.mo}/${st.n}`,wpx=xb-xa-8;
+      else{const st=slotStats(prev.ts,b.ts),d=b.ts-prev.ts,full=`${dur(d)} · ${st.n} slots · ${st.mo} momentums · ${st.miss} missed${coverageText(st)}`,mid=`${dur(d)} · ${st.mo}/${st.n}${st.unknown||st.pending?' partial':''}`,wpx=xb-xa-8;
         iv.push({xa,xb,txt:ctx.measureText(full).width<wpx?full:ctx.measureText(mid).width<wpx?mid:ctx.measureText(dur(d)).width<wpx?dur(d):'',warn:st.miss>0})}}
     prev=b}
   // the open interval: last block → now
-  {const xa=Math.min(X(lastB.ts),xNow),st=slotStats(lastB.ts,now+.001);iv.push({xa,xb:xNow,txt:`${dur(now-lastB.ts)} and counting · ${st.mo}/${st.n}`,open:true})}
+  {const xa=Math.min(X(lastB.ts),xNow),st=slotStats(lastB.ts,now+.001);iv.push({xa,xb:xNow,txt:`${dur(now-lastB.ts)} and counting · ${st.mo}/${st.n}${st.unknown||st.pending?' partial':''}`,open:true})}
   let lblR=-1e9;
   for(const v of iv){
     if(!v.pt&&v.xb-v.xa>=6){ctx.strokeStyle=v.open?'rgba(111,243,77,.6)':'#363c5e';ctx.lineWidth=1;if(v.open)ctx.setLineDash([3,3]);
@@ -1122,7 +1142,7 @@ BC.frame=function(el,dt,t){
   // cubes on top, nudged up a level when they would overlap
   const lvlRight=[-1e9,-1e9,-1e9];
   for(const b of vis){const xb=Math.min(X(b.ts),xNow);let lv=0;while(lv<2&&xb-cs/2-cd<lvlRight[lv]+6)lv++;lvlRight[lv]=xb+cs/2;
-    const x=xb-cs/2,y=yB-cs-lv*(cs+cd+22),isTop=b===lastB,fk=isTop?Math.max(0,1-(t-BT.flash)/2500):0;
+    const x=xb-cs/2,y=yB-cs-lv*(cs+cd+(short?14:22)),isTop=b===lastB,fk=isTop?Math.max(0,1-(t-BT.flash)/2500):0;
     if(lv){ctx.strokeStyle='rgba(247,147,26,.35)';ctx.beginPath();ctx.moveTo(xb+.5,y+cs);ctx.lineTo(xb+.5,yB);ctx.stroke()}
     cube2d(ctx,x,y,cs,cd,'#ffb34d','#7a3d06','#f7931a','#9c4f0b');
     if(fk>0){ctx.fillStyle=`rgba(255,255,255,${(fk*.8).toFixed(3)})`;ctx.fillRect(x,y,cs,cs);ctx.strokeStyle=`rgba(247,147,26,${fk.toFixed(3)})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(xb,y+cs/2,cs*(.7+1.6*(1-fk)),0,7);ctx.stroke();ctx.lineWidth=1}
@@ -1138,12 +1158,12 @@ BC.frame=function(el,dt,t){
     ctx.fillStyle='#8a90a8';ctx.font='500 10px Arial';ctx.textBaseline='top';ctx.fillText('next block:',gx,gy+cs+8);ctx.fillText('any moment',gx,gy+cs+21)}
   // footer: genesis anchor + what this view shows
   const sinceB=S.btc-BTC_ANCHOR;ctx.textAlign='center';ctx.textBaseline='alphabetic';
-  if(sinceB>0){ctx.fillStyle='#c9cde0';ctx.font='500 12px Arial';
+  if(sinceB>0){ctx.fillStyle='#c9cde0';ctx.font=`500 ${short||narrow?10:12}px Arial`;
     if(narrow){[`Zenon's genesis commits to Bitcoin #${fmtInt(BTC_ANCHOR)}`,`since then +${fmtInt(sinceB)} BTC blocks · ${fmtInt(S.frontier)} momentums`,`≈ ${(S.frontier/sinceB).toFixed(1)} momentums per Bitcoin block`].forEach((l,i)=>ctx.fillText(l,w/2,h*.9+i*17))}
-    else ctx.fillText(`Zenon's genesis commits to Bitcoin #${fmtInt(BTC_ANCHOR)}  ·  since then +${fmtInt(sinceB)} Bitcoin blocks and ${fmtInt(S.frontier)} momentums  ≈  ${(S.frontier/sinceB).toFixed(1)} momentums per Bitcoin block`,w/2,h*.935)}
+    else wrapText(ctx,`Genesis reference: Bitcoin #${fmtInt(BTC_ANCHOR)} · +${fmtInt(sinceB)} Bitcoin blocks and ${fmtInt(S.frontier)} momentums · ≈ ${(S.frontier/sinceB).toFixed(1)} momentums per Bitcoin block`,w/2,h*.90,w*.9,15)}
   const ints=[];for(let i=1;i<vis.length;i++){const d=vis[i].ts-vis[i-1].ts;if(d>0)ints.push(d)}
-  if(ints.length>1&&!narrow){const vst=slotStats(t0,now);ctx.fillStyle='#6b7190';ctx.font='500 11px Arial';
-    ctx.fillText(`Bitcoin intervals in view: ${dur(Math.min(...ints))} to ${dur(Math.max(...ints))}  ·  Zenon slot: always ${TICK} s (${vst.mo} of ${vst.n} filled in view)  ·  Bitcoin times are miner-reported`,w/2,h*.935+20)}
+  if(ints.length>1&&!narrow&&!short){const vst=slotStats(t0,now);ctx.fillStyle='#6b7190';ctx.font='500 11px Arial';
+    wrapText(ctx,`Bitcoin intervals in view: ${dur(Math.min(...ints))} to ${dur(Math.max(...ints))}  ·  Zenon slot: always ${TICK} s (${vst.mo} of ${vst.n} filled in view)  ·  Bitcoin times are miner-reported`,w/2,h*.935+20)}
 };
 
 /* ============================================================
@@ -1153,41 +1173,40 @@ const EPR={id:'epoch',el:$('#s-epoch'),dur:15000,cv:$('#rug'),off:document.creat
 EPR.ready=()=>S.ready&&S.ms.length>100;
 EPR.info=function(){const now=serverNow(),e=Math.floor((now-GENESIS_TS)/EPOCH);return{e,s0:e*SLOTS_PER_EPOCH,cur:Math.floor((now-GENESIS_TS)/TICK),es:GENESIS_TS+e*EPOCH}};
 EPR.caption=()=>`Epoch ${fmtInt(EPR.info().e)} · ${fmtInt(SLOTS_PER_EPOCH)} slots · 1 cell = 10 s · 1 column = 10 min`;
-EPR.cellColor=function(slot,cur,first){const m=S.bySlot.get(slot);
+EPR.cellColor=function(slot,cur,first){const state=slotState(slot,cur,0,first),m=state.m;
   if(m){if(m.n)return blockColor(m.blocks.find(b=>!b.sys)||m.blocks[0]);const v=(parseInt((m.producer||'0').slice(-3),36)%17)/17;return shade('#3542b2',.68+v*.52)}
-  return slot>cur?'#0c0f1e':slot<first?'#171a2b':slot===cur?'#1d4a14':'#8a2626'};
+  return{future:'#0c0f1e',unknown:'#171a2b',wait:'#6b512a',pending:'#6b512a',missed:'#8a2626'}[state.st];
+};
 EPR.render=function(cell,gap){
-  const{s0,cur}=this.info(),first=firstSlot(),o=this.off;o.width=this.COLS*cell;o.height=this.ROWS*cell;const c=o.getContext('2d');
-  c.fillStyle='#05060c';c.fillRect(0,0,o.width,o.height);let prod=0,miss=0,blk=0,unk=0;
-  for(let i=0;i<SLOTS_PER_EPOCH;i++){const slot=s0+i;c.fillStyle=this.cellColor(slot,cur,first);c.fillRect(((i/this.ROWS)|0)*cell,(i%this.ROWS)*cell,cell-gap,cell-gap);
-    const m=S.bySlot.get(slot);if(m){prod++;if(m.n)blk++}else if(slot<cur){if(slot<first)unk++;else miss++}}
-  this.stats={prod,miss,blk,unk,rem:Math.max(0,s0+SLOTS_PER_EPOCH-cur)};
+  const{s0,cur}=this.info(),first=firstSlot(),o=this.off;o.width=this.COLS*cell;o.height=this.ROWS*cell;const c=o.getContext('2d');c.fillStyle='#05060c';c.fillRect(0,0,o.width,o.height);
+  for(let i=0;i<SLOTS_PER_EPOCH;i++){c.fillStyle=this.cellColor(s0+i,cur,first);c.fillRect(((i/this.ROWS)|0)*cell,(i%this.ROWS)*cell,cell-gap,cell-gap)}
+  this.stats=epochStats(s0,cur);
 };
 EPR.enter=function(){this.key='';$('#rugSave').style.display=S.mode==='live'?'':'none'}; // export only real chain data
 EPR.frame=function(el,dt,t){
-  const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);if(!S.ms.length)return;
-  const L=w*.06,pw=w-2*L,top=h*.2,ph=h*.58,cell=Math.max(2,Math.floor(Math.min(pw/this.COLS,ph/this.ROWS))),gap=cell>=5?1:0;
-  const W=this.COLS*cell,H=this.ROWS*cell,x0=Math.round((w-W)/2),y0=Math.round(w<700?h*.37:top+(ph-H)/2);
+  const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);if(!S.ms.length)return;$('#rugSave').style.display=S.mode==='live'?'':'none';
+  const compact=w<1000||h<520,L=w*.06,pw=w-2*L,top=h*.2,ph=h*.58,cell=Math.max(2,Math.floor(Math.min(pw/this.COLS,ph/this.ROWS))),gap=cell>=5?1:0;
+  const W=this.COLS*cell,H=this.ROWS*cell,x0=Math.round((w-W)/2),y0=Math.round(compact?Math.max(contentTop(h,.08)+60,h*(h<520?.30:.37)):top+(ph-H)/2);
   const{e,s0,cur,es}=this.info(),key=`${cur}:${S.frontier}:${S.ms.length}:${cell}`;
   if(key!==this.key){this.render(cell,gap);this.key=key}
   const rc=Math.ceil(this.COLS*ease(clamp(el/1.9,0,1)));if(rc>0)ctx.drawImage(this.off,0,0,rc*cell,H,x0,y0,rc*cell,H);
   const ci=cur-s0;if(ci>=0&&ci<SLOTS_PER_EPOCH){const col=(ci/this.ROWS)|0,row=ci%this.ROWS;if(col<rc){ctx.fillStyle=`rgba(255,255,255,${(.4+.45*Math.sin(t/160)).toFixed(3)})`;ctx.fillRect(x0+col*cell-1,y0+row*cell-1,cell-gap+2,cell-gap+2)}}
   ctx.font='500 10px Arial';ctx.fillStyle='#4f5672';ctx.textAlign='center';ctx.textBaseline='bottom';
-  for(let hh=0;hh<=24;hh+=w<700?6:2){const x=x0+hh*6*cell;ctx.fillRect(x,y0-7,1,4);ctx.fillText(hhmm(es+hh*3600),x,y0-10)}
-  ctx.textAlign=w<700?'center':'left';ctx.textBaseline='alphabetic';ctx.fillStyle='#fff';ctx.font=`700 ${clamp(w*.016,14,24)}px Arial`;ctx.fillText(`EPOCH ${fmtInt(e)}`,w<700?w/2:x0,y0-(w<700?60:32));
+  for(let hh=0;hh<=24;hh+=compact?6:2){const x=x0+hh*6*cell;ctx.fillRect(x,y0-7,1,4);ctx.fillText(hhmm(es+hh*3600),x,y0-10)}
+  ctx.textAlign=compact?'center':'left';ctx.textBaseline='alphabetic';ctx.fillStyle='#fff';ctx.font=`700 ${clamp(w*.016,14,24)}px Arial`;ctx.fillText(`EPOCH ${fmtInt(e)}`,compact?w/2:x0,y0-(compact?60:32));
   ctx.fillStyle='#6b7190';ctx.font='500 10px Arial';
-  if(w<700){ctx.textAlign='center';ctx.fillText(`${fmtDate(es,false)} ${hhmm(es)} UTC`,w/2,y0-42);ctx.fillText(`→ ${fmtDate(es+EPOCH,false)} ${hhmm(es+EPOCH)} UTC`,w/2,y0-27)}else{ctx.textAlign='right';ctx.fillText(`${fmtDate(es,false)} ${hhmm(es)} → ${fmtDate(es+EPOCH,false)} ${hhmm(es+EPOCH)} UTC · ↓ 60 slots = 10 min`,x0+W,y0-32)}
+  if(compact){ctx.textAlign='center';ctx.fillText(`${fmtDate(es,false)} ${hhmm(es)} UTC`,w/2,y0-42);ctx.fillText(`→ ${fmtDate(es+EPOCH,false)} ${hhmm(es+EPOCH)} UTC`,w/2,y0-27)}else{ctx.textAlign='right';ctx.fillText(`${fmtDate(es,false)} ${hhmm(es)} → ${fmtDate(es+EPOCH,false)} ${hhmm(es+EPOCH)} UTC · ↓ 60 slots = 10 min`,x0+W,y0-32)}
   const st=this.stats,done=st.prod+st.miss,items=[['#3542b2','momentums',fmtInt(st.prod)],['#e8e04a','with account blocks',fmtInt(st.blk)],['#8a2626','missed slots',`${fmtInt(st.miss)}  (${done?(st.miss/done*100).toFixed(1):'0.0'} %)`],['#0c0f1e','still to come',fmtInt(st.rem)]];
-  if(st.unk)items.push(['#171a2b','loading',fmtInt(st.unk)]);
-  ctx.font=`500 ${w<700?10:12}px Arial`;ctx.textBaseline='alphabetic';legendRows(ctx,items.map(([c,l,v])=>[c,`${l} ${v}`]),w,y0+H+24,20);
+  if(st.unk)items.push(['#171a2b','unloaded',fmtInt(st.unk)]);if(st.pending)items.push(['#6b512a','pending',fmtInt(st.pending)]);
+  ctx.font=`500 ${compact?10:12}px Arial`;ctx.textBaseline='alphabetic';legendRows(ctx,items.map(([c,l,v])=>[c,`${l} ${v}`]),w,y0+H+24,20);
 };
-$('#rugSave').addEventListener('click',()=>{try{
+$('#rugSave').addEventListener('click',()=>{if(S.mode!=='live')return;try{
   const{e,es}=EPR.info();EPR.render(12,1);EPR.key='';const g=EPR.off,st=EPR.stats,pad=64,W=g.width+pad*2,H=g.height+pad*2+96;
   const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,W,H);
   x.fillStyle='#fff';x.font='700 30px Arial';x.fillText(`ZENON · EPOCH ${fmtInt(e)}`,pad,pad+8);
   x.fillStyle='#8a90a8';x.font='500 16px Arial';x.fillText(`${fmtDate(es,false)} ${hhmm(es)} UTC → ${fmtDate(es+EPOCH,false)} ${hhmm(es+EPOCH)} UTC  ·  1 cell = one 10 s slot  ·  1 column = 10 min`,pad,pad+38);
   x.drawImage(g,pad,pad+62);
-  x.fillText(`momentums ${fmtInt(st.prod)}  ·  with account blocks ${fmtInt(st.blk)}  ·  missed slots ${fmtInt(st.miss)}  ·  still to come ${fmtInt(st.rem)}  ·  rendered ${fmtDate(Math.floor(serverNow()))}`,pad,pad+62+g.height+36);
+  x.fillText(`momentums ${fmtInt(st.prod)}  ·  with account blocks ${fmtInt(st.blk)}  ·  missed slots ${fmtInt(st.miss)}  ·  pending ${fmtInt(st.pending)}  ·  unloaded ${fmtInt(st.unk)}  ·  future ${fmtInt(st.rem)}  ·  rendered ${fmtDate(Math.floor(serverNow()))}`,pad,pad+62+g.height+36);
   c.toBlob(b=>{if(!b)return;const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`zenon-epoch-${e}.png`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),5000)},'image/png');
 }catch(err){console.warn('png export',err)}});
 
@@ -1235,7 +1254,7 @@ GL.frame=function(el,dt,t){
   const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);if(!S.ms.length)return;
   const narrow=w<h,cols=narrow?5:12,rows=narrow?7:5,gap=Math.max(10,w*.012);
   const tile=Math.floor(Math.min((w*.9-(cols-1)*gap)/cols,(h*.66-(rows-1)*(gap+16))/rows));
-  const gw=cols*tile+(cols-1)*gap,x0=(w-gw)/2,y0=h*.2;
+  const gw=cols*tile+(cols-1)*gap,x0=(w-gw)/2,y0=contentTop(h,.2);
   const now=serverNow(),pt=(now-GENESIS_TS)/TICK,cur=Math.floor(pt),frac=pt-cur,first=firstSlot();
   const slide=ease(clamp(frac*TICK/.7,0,1)),N=cols*rows,rev=clamp(el/1.2,0,1);
   const at=i=>{const c=i%cols,r=(i/cols)|0;return[x0+c*(tile+gap),y0+r*(tile+gap+16)]};
@@ -1252,8 +1271,8 @@ GL.frame=function(el,dt,t){
       ctx.fillText('#'+fmtInt(ss.m.h),x,y+tile+4,tile);ctx.textAlign='right';ctx.fillStyle='#565c77';const nm=pillarName(ss.m.producer);if(tile>130)ctx.fillText(nm.length>12?nm.slice(0,11)+'…':nm,x+tile,y+tile+4)}
     else if(ss.st==='missed'){ctx.strokeStyle='#8a2626';ctx.lineWidth=2;ctx.strokeRect(x+1,y+1,tile-2,tile-2);ctx.beginPath();ctx.moveTo(x+tile*.3,y+tile*.3);ctx.lineTo(x+tile*.7,y+tile*.7);ctx.moveTo(x+tile*.7,y+tile*.3);ctx.lineTo(x+tile*.3,y+tile*.7);ctx.stroke();ctx.lineWidth=1;
       ctx.fillStyle='#ff6b4a';ctx.font=`500 ${clamp(tile*.085,9,12)}px Arial`;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText('missed slot',x,y+tile+4)}
-    else if(ss.st==='wait'){ctx.strokeStyle=`rgba(111,243,77,${(.5+.4*Math.sin(t/120)).toFixed(3)})`;ctx.lineWidth=2;ctx.strokeRect(x+1,y+1,tile-2,tile-2);ctx.lineWidth=1;
-      ctx.fillStyle='#6ff34d';ctx.font=`500 ${clamp(tile*.085,9,12)}px Arial`;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText('producing…',x,y+tile+4)}
+    else if(ss.st==='wait'||ss.st==='pending'){ctx.strokeStyle=`rgba(111,243,77,${(.5+.4*Math.sin(t/120)).toFixed(3)})`;ctx.lineWidth=2;ctx.strokeRect(x+1,y+1,tile-2,tile-2);ctx.lineWidth=1;
+      ctx.fillStyle='#6ff34d';ctx.font=`500 ${clamp(tile*.085,9,12)}px Arial`;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText('pending',x,y+tile+4)}
     else{ctx.strokeStyle='#1b2142';ctx.strokeRect(x+.5,y+.5,tile-1,tile-1)}
   }
   ctx.globalAlpha=1;
@@ -1264,7 +1283,7 @@ GL.frame=function(el,dt,t){
    ============================================================ */
 const CO={id:'constellation',el:$('#s-constellation'),dur:17000,cv:$('#cst'),pos:new Map(),key:''};
 CO.ready=()=>S.ready&&S.pillars.length>0;
-CO.caption=()=>`Round constellation · stars are pillars (brighter = more weight) · every round of ${ROUND} slots draws its own figure · breaks = missed slots`;
+CO.caption=()=>'Round constellation · observed producers · brightness follows delegated weight';
 CO.layout=function(w,h){
   const P=pillarsByWeight(),cx=w/2,cy=h*.54,R=Math.min(w*.4,h*.34),maxW=P.length?P[0].w||1:1;this.pos.clear();
   P.forEach((p,i)=>{const s1=seeded(p.producerAddress,1),s2=seeded(p.producerAddress,2),a=i*2.399963+s1*.7,r=R*Math.sqrt((i+.7)/P.length)*(.9+s2*.2);
@@ -1290,7 +1309,7 @@ CO.frame=function(el,dt,t){
   for(const{q,slot,m}of lit){const isCur=slot===cur||slot===cur-1&&!S.bySlot.has(cur),ft=DI.flash.get(slot),fk=ft?Math.max(0,1-(t-ft)/1600):0;
     ctx.globalAlpha=intro;ctx.fillStyle=m.n?domColor(m):'#ffffff';ctx.beginPath();ctx.arc(q.x,q.y,q.s+1.5+fk*6,0,7);ctx.fill();
     if(fk>0){ctx.strokeStyle=`rgba(255,255,255,${fk.toFixed(3)})`;ctx.beginPath();ctx.arc(q.x,q.y,q.s+6+(1-fk)*22,0,7);ctx.stroke()}
-    const nm=pillarName(m.producer);ctx.fillStyle=isFollow(nm)?'#6ff34d':isCur?'#fff':'#8f95b2';ctx.font=`500 ${isCur?12:10}px Arial`;ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(nm.length>16?nm.slice(0,15)+'…':nm,q.x+q.s+6,q.y)}
+    const nm=pillarName(m.producer);ctx.fillStyle=isFollow(nm)?'#6ff34d':isCur?'#fff':'#8f95b2';ctx.font=`500 ${isCur?12:10}px Arial`;ctx.textAlign=q.x>w/2?'right':'left';ctx.textBaseline='middle';ctx.fillText(nm.length>16?nm.slice(0,15)+'…':nm,q.x+(q.x>w/2?-q.s-6:q.s+6),q.y)}
   ctx.globalAlpha=intro;ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillStyle='#6b7190';ctx.font='500 12px Arial';
   if(w<700){ctx.font='500 11px Arial';ctx.fillText(`ROUND ${fmtInt(round)}  ·  SLOT ${pos+1} / ${ROUND}  ·  ${prod} produced  ·  ${miss} missed`,w/2,h*.93);ctx.fillStyle='#4f5672';ctx.fillText('faint figures: the two rounds before',w/2,h*.93+17)}
   else ctx.fillText(`ROUND ${fmtInt(round)}  ·  SLOT ${pos+1} / ${ROUND}  ·  ${prod} produced  ·  ${miss} missed  ·  faint figures: the two rounds before`,w/2,h*.95);
@@ -1302,10 +1321,10 @@ CO.frame=function(el,dt,t){
    ============================================================ */
 const WF={id:'waterfall',el:$('#s-waterfall'),dur:17000,cv:$('#wf')};
 WF.ready=()=>S.ready&&S.pillars.length>0;
-WF.caption=()=>`Pillar waterfall · rows are ${TICK} s slots flowing down · columns are pillars, heaviest left · red bars: slots each pillar missed this epoch`;
+WF.caption=()=>'Pillar waterfall · 10 s slot rows · bars use cached node production counters';
 WF.frame=function(el,dt,t){
   const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);const P=pillarsByWeight(),n=P.length;if(!n||!S.ms.length)return;
-  const col=new Map(P.map((p,i)=>[p.producerAddress,i])),L=w*.05,R=w*(w>900?.2:.04),top=h*.19,bottom=h*.68,gut=Math.max(12,w*.012);
+  const col=new Map(P.map((p,i)=>[p.producerAddress,i])),L=w*.05,R=w*(w>900?.2:.04),top=contentTop(h,.19),bottom=h*.68,gut=Math.max(12,w*.012);
   const x0=L+gut+10,pw=w-x0-R,cw=pw/n,rh=clamp(h*.0055,3,6),rows=Math.floor((bottom-top)/rh);
   const now=serverNow(),pt=(now-GENESIS_TS)/TICK,cur=Math.floor(pt),frac=pt-cur,first=firstSlot(),rev=ease(clamp(el/1.4,0,1));
   ctx.fillStyle='rgba(255,255,255,.035)';for(let i=0;i<=n;i+=10)ctx.fillRect(x0+i*cw,top,1,bottom-top);
@@ -1314,7 +1333,7 @@ WF.frame=function(el,dt,t){
     if(ss.m){const i=col.get(ss.m.producer);if(i!=null){ctx.fillStyle=ss.m.n?domColor(ss.m):'#5b63ff';ctx.fillRect(x0+i*cw,y,Math.max(1.5,cw-1),rh-1)}
       const ft=DI.flash.get(slot);if(ft&&i!=null){const k=1-(t-ft)/900;if(k>0){ctx.fillStyle=`rgba(255,255,255,${k.toFixed(3)})`;ctx.fillRect(x0+i*cw-2,y-2,cw+3,rh+3)}}}
     else if(ss.st==='missed'){ctx.fillStyle='#c0392b';ctx.fillRect(L,y,gut,rh-1)}
-    else if(ss.st==='wait'){ctx.fillStyle='#6ff34d';ctx.fillRect(L,y,gut,rh-1)}}
+    else if(ss.st==='wait'||ss.st==='pending'){ctx.fillStyle=ss.st==='wait'?'#6ff34d':'#6b512a';ctx.fillRect(L,y,gut,rh-1)}}
   ctx.restore();
   ctx.save();ctx.translate(L+gut/2,top-8);ctx.rotate(-Math.PI/2);ctx.fillStyle='#c0392b';ctx.font='600 10px Arial';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText('MISSED',0,0);ctx.restore();
   const mx=Math.max(1,...P.map(missedEpoch)),bh=h*.11;
@@ -1327,7 +1346,7 @@ WF.frame=function(el,dt,t){
   if(w>900){const px=w-R+24;let y=top+4;ctx.textAlign='left';ctx.textBaseline='top';
     ctx.fillStyle='#fff';ctx.font='600 12px Arial';ctx.fillText('MOST MISSED · THIS EPOCH',px,y);y+=22;ctx.font='500 12px Arial';
     for(const p of[...P].sort((a,b)=>missedEpoch(b)-missedEpoch(a)).slice(0,8)){if(!missedEpoch(p))break;const e=p.currentStats.expectedMomentums;ctx.fillStyle='#ff8a6b';ctx.fillText(String(missedEpoch(p)).padStart(4,' '),px,y);ctx.fillStyle='#c9cde0';ctx.fillText(`${p.name.length>16?p.name.slice(0,15)+'…':p.name}`,px+40,y);ctx.fillStyle='#565c77';ctx.fillText(`of ${e}`,px+40+ctx.measureText(p.name.length>16?p.name.slice(0,15)+'…':p.name).width+8,y);y+=19}
-    const rec=S.missLog.filter(x=>Date.now()-x.t<3600e3);y+=14;ctx.fillStyle='#fff';ctx.font='600 12px Arial';ctx.fillText('MISSED · LAST HOUR',px,y);y+=22;ctx.font='500 12px Arial';
+    const rec=S.missLog.filter(x=>Date.now()-x.t<3600e3);y+=14;ctx.fillStyle='#fff';ctx.font='600 12px Arial';ctx.fillText('REPORTED UPDATES · LAST HOUR',px,y);y+=22;ctx.font='500 12px Arial';
     if(!rec.length){ctx.fillStyle='#565c77';ctx.fillText(S.missLog.length||S.statsAt>1?'none reported':'stats refresh every ~5 min',px,y)}
     else{const agg=new Map();for(const x of rec)agg.set(x.name,(agg.get(x.name)||0)+x.n);for(const[nm,c]of[...agg].sort((a,b)=>b[1]-a[1]).slice(0,6)){ctx.fillStyle='#ff8a6b';ctx.fillText(String(c).padStart(4,' '),px,y);ctx.fillStyle='#c9cde0';ctx.fillText(nm.length>18?nm.slice(0,17)+'…':nm,px+40,y);y+=19}}}
 };
@@ -1337,7 +1356,7 @@ WF.frame=function(el,dt,t){
    ============================================================ */
 const LM={id:'loom',el:$('#s-loom'),dur:18000,cv:$('#loom'),key:'',lay:null};
 LM.ready=()=>S.ready&&S.ms.length>200;
-LM.caption=()=>`Dual ledger loom · vertical threads are account chains · knots are account blocks · cross threads link send → receive · loose glowing ends: no receive observed in this window`;
+LM.caption=()=>'Dual ledger loom · sampled account chains and send/receive links · loaded window only';
 LM.build=function(now){
   const bl=[];let t0=now;
   for(let i=S.ms.length-1;i>=0;i--){const r=S.ms[i];if(now-r.ts>86400)break;for(let k=r.blocks.length-1;k>=0;k--)bl.push(r.blocks[k]);t0=r.ts;if(bl.length>=160&&now-r.ts>2*3600)break}
@@ -1346,18 +1365,18 @@ LM.build=function(now){
   let list=[...acc.values()];const emb=list.filter(o=>o.emb).sort((a,b)=>b.n-a.n),usr=list.filter(o=>!o.emb).sort((a,b)=>b.n-a.n).slice(0,36);
   const order=[];emb.forEach((o,i)=>i%2?order.push(o):order.unshift(o));usr.sort((a,b)=>a.first-b.first).forEach((o,i)=>i%2?order.push(o):order.unshift(o));
   const sends=new Map();for(const b of bl)if(b.type===2||b.type===4)sends.set(b.hash,b);const recvOf=new Set();for(const b of bl)if((b.type===3||b.type===5)&&b.fromHash)recvOf.add(b.fromHash);
-  this.lay={bl,t0,order,idx:new Map(order.map((o,i)=>[o.a,i])),sends,recvOf};this.key=`${S.frontier}:${S.ms.length}`;
+  const idx=new Map(order.map((o,i)=>[o.a,i])),shown=bl.filter(b=>idx.has(b.from)).length;this.lay={bl,t0,order,idx,sends,recvOf,shown};this.key=`${S.frontier}:${S.ms.length}`;
 };
 LM.frame=function(el,dt,t){
   const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);const now=serverNow();
   if(this.key!==`${S.frontier}:${S.ms.length}`||!this.lay)this.build(now);const Lz=this.lay;if(!Lz.order.length)return;
-  const L=w*.07,R=w*.05,top=h*.24,bottom=h*.86,n=Lz.order.length,gx=(w-L-R)/Math.max(1,n-1),X=a=>{const i=Lz.idx.get(a);return i==null?null:L+i*gx},Y=ts=>top+(ts-Lz.t0)/Math.max(60,now-Lz.t0)*(bottom-top);
+  const L=Math.max(52,w*.07),R=Math.max(32,w*.05),top=contentTop(h,.24,50),bottom=h*(h<520?.78:.82),n=Lz.order.length,gx=(w-L-R)/Math.max(1,n-1),X=a=>{const i=Lz.idx.get(a);return i==null?null:L+i*gx},Y=ts=>top+(ts-Lz.t0)/Math.max(60,now-Lz.t0)*(bottom-top);
   const rev=ease(clamp(el/1.6,0,1)),yRev=top+(bottom-top)*rev;
   ctx.font='500 10px Arial';ctx.fillStyle='#3a4166';ctx.textAlign='right';ctx.textBaseline='middle';
   const span=now-Lz.t0,st=span>12*3600?3*3600:span>4*3600?3600:1800;
   for(let ts=Math.ceil(Lz.t0/st)*st;ts<now;ts+=st){const y=Y(ts);if(y>yRev)break;ctx.fillStyle='rgba(255,255,255,.04)';ctx.fillRect(L-6,y,w-L-R+12,1);ctx.fillStyle='#4f5672';ctx.fillText(hhmm(ts),L-12,y)}
   Lz.order.forEach((o,i)=>{const x=L+i*gx;ctx.strokeStyle=o.emb?hexA((KINDS[o.emb]||KINDS.contract).c,.35):'rgba(120,130,180,.18)';ctx.lineWidth=o.emb?2:1;ctx.beginPath();ctx.moveTo(x,top-6);ctx.lineTo(x,yRev);ctx.stroke();
-    ctx.save();ctx.translate(x,top-12);ctx.rotate(-Math.PI/4);ctx.fillStyle=o.emb?(KINDS[o.emb]||KINDS.contract).c:'#565c77';ctx.font=`${o.emb?600:500} 10px Arial`;ctx.textAlign='left';ctx.fillText(o.emb?(KINDS[o.emb]||KINDS.contract).label:o.a.slice(0,7)+'…'+o.a.slice(-3),0,0);ctx.restore()});
+    ctx.save();ctx.translate(x,top-12);ctx.rotate(-Math.PI/4);ctx.fillStyle=o.emb?(KINDS[o.emb]||KINDS.contract).c:'#565c77';ctx.font=`${o.emb?600:500} 10px Arial`;ctx.textAlign=i>n/2?'right':'left';ctx.fillText(o.emb?(KINDS[o.emb]||KINDS.contract).label:o.a.slice(0,7)+'…'+o.a.slice(-3),0,0);ctx.restore()});
   ctx.lineWidth=1.4;
   for(const b of Lz.bl){if(!((b.type===3||b.type===5)&&b.fromHash))continue;const s=Lz.sends.get(b.fromHash);if(!s)continue;const xa=X(s.from),xb=X(b.from);if(xa==null||xb==null)continue;
     const ya=Y(s.mts),yb=Y(b.mts);if(Math.min(ya,yb)>yRev)continue;ctx.strokeStyle=hexA((KINDS[s.kind]||KINDS.contract).c,.75);ctx.beginPath();ctx.moveTo(xa,ya);ctx.bezierCurveTo(xa,ya+(yb-ya)*.5+14,xb,yb-14,xb,yb);ctx.stroke()}
@@ -1368,8 +1387,9 @@ LM.frame=function(el,dt,t){
   for(const b of Lz.bl){const x=X(b.from);if(x==null)continue;const y=Y(b.mts);if(y>yRev)continue;const c=blockColor(b),fk=BL.fresh.has(b.hash)?1:0;
     ctx.fillStyle=c;ctx.fillRect(x-3.5,y-3.5,7,7);if(b.type===3||b.type===5){ctx.strokeStyle='rgba(0,0,0,.6)';ctx.strokeRect(x-2,y-2,4,4)}}
   ctx.fillStyle='#4f5672';ctx.font='500 11px Arial';ctx.textAlign='center';ctx.textBaseline='top';
-  if(w<700){ctx.fillText(`${fmtInt(Lz.bl.length)} account blocks on ${fmtInt(n)} chains since ${hhmm(Lz.t0)} UTC`,w/2,bottom+26);ctx.fillText('■ send   ▣ receive  ·  time flows down',w/2,bottom+44)}
-  else ctx.fillText(`${fmtInt(Lz.bl.length)} account blocks on ${fmtInt(n)} account chains since ${hhmm(Lz.t0)} UTC  ·  ■ send   ▣ receive  ·  time flows down`,w/2,bottom+26);
+  const rows=wrapText(ctx,`${fmtInt(Lz.shown)} of ${fmtInt(Lz.bl.length)} sampled blocks · ${fmtInt(n)} threads · since ${hhmm(Lz.t0)} UTC`,w/2,bottom+22,w*.9,15);
+  ctx.fillText('■ send   ▣ receive · loose ends: no receive observed',w/2,bottom+22+rows*15,w*.9);
+
 };
 
 /* ============================================================
@@ -1377,7 +1397,7 @@ LM.frame=function(el,dt,t){
    ============================================================ */
 const SP={id:'spiral',el:$('#s-spiral'),dur:16000,cv:$('#spi')};
 SP.ready=()=>!!S.hs;
-SP.caption=()=>`Event horizon · Zenon's history spirals out of Bitcoin #${fmtInt(BTC_ANCHOR)} · one turn = 90 days · colour = share of slots missed`;
+SP.caption=()=>'Event horizon · one turn = 90 days · color follows missed share between sampled heights';
 SP.frame=function(el,dt,t){
   const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);const D=S.hs;if(!D)return;
   const T=90*86400,n=D.t.length,tEnd=D.t[n-1],cx=w/2,cy=h*.54,m=Math.min(w,h),r0=m*.06,rMax=m*.355,turns=(tEnd-GENESIS_TS)/T,k=(rMax-r0)/(turns*2*Math.PI);
@@ -1395,34 +1415,39 @@ SP.frame=function(el,dt,t){
   ctx.fillStyle='#f7931a';ctx.font='600 11px Arial';ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText(`BITCOIN #${fmtInt(BTC_ANCHOR)}`,cx,cy+22);
   ctx.fillStyle='#8a90a8';ctx.font='500 10px Arial';ctx.fillText('+24 h 58 m → Zenon genesis',cx,cy+37);
   const[hx,hy]=P(tp);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(hx,hy,4+pu*2,0,7);ctx.fill();
-  ctx.font='600 12px Arial';ctx.textAlign=hx>cx?'left':'right';ctx.textBaseline='middle';ctx.fillText(p>=1?'now':fmtDate(Math.round(tp),false),hx+(hx>cx?12:-12),hy);
-  const lx=w/2-120,ly=h*.94;for(let i=0;i<=60;i++){ctx.fillStyle=missColor(i/60*.3);ctx.fillRect(lx+i*4,ly,4,8)}
-  ctx.fillStyle='#6b7190';ctx.font='500 10px Arial';ctx.textAlign='right';ctx.textBaseline='middle';ctx.fillText('0 % missed',lx-8,ly+4);ctx.textAlign='left';ctx.fillText('30 %+',lx+248,ly+4);
+  ctx.font='600 12px Arial';ctx.textAlign=hx>cx?'left':'right';ctx.textBaseline='middle';ctx.fillText(p>=1?'latest observed':fmtDate(Math.round(tp),false),hx+(hx>cx?12:-12),hy);
+  const ramp=Math.min(240,w*.54),lx=w/2-ramp/2,ly=h*(w<380?.90:.94);for(let i=0;i<=60;i++){ctx.fillStyle=missColor(i/60*.3);ctx.fillRect(lx+i*ramp/60,ly,ramp/60+1,8)}
+  ctx.fillStyle='#6b7190';ctx.font='500 10px Arial';ctx.textAlign='right';ctx.textBaseline='middle';if(w<380){ctx.textAlign='left';ctx.fillText('0 % missed',lx,ly+22);ctx.textAlign='right';ctx.fillText('30 %+',lx+ramp,ly+22)}else{ctx.fillText('0 % missed',lx-8,ly+4);ctx.textAlign='left';ctx.fillText('30 %+',lx+ramp+8,ly+4)}
 };
 
 /* ============================================================
-   scene: heat — proof of work adds weight, fused plasma does not
+   scene: observed proof-of-work and fusion plasma fields
    ============================================================ */
 const HT={id:'heat',el:$('#s-heat'),dur:16000,cv:$('#heat')};
 HT.ready=()=>S.ready&&S.ms.length>100;
-HT.caption=()=>`Heat · proof-of-work plasma adds weight to the ledger, fused plasma does not · momentums carry none`;
+HT.caption=()=>'Plasma activity · PoW, fusion and mixed usage · node-reported account-block fields';
+function heatSummary(records,t0){
+  const stats={total:0,hot:0,fused:0,mixed:0,none:0,unknown:0,knownDifficulty:0,difficulty:0};
+  for(const r of records){if(r.ts<t0)continue;for(const b of r.blocks){stats.total++;if(b.diffKnown){stats.knownDifficulty++;if(b.pow){stats.hot++;stats.difficulty+=b.diff}}if(b.fusedKnown&&b.fused>0)stats.fused++;if(b.pow&&b.fused>0&&b.diffKnown&&b.fusedKnown)stats.mixed++;if(!b.plasmaKnown||!b.diffKnown||!b.fusedKnown)stats.unknown++;else if(!b.pow&&!b.fused)stats.none++}}
+  return stats;
+}
 HT.frame=function(el,dt,t){
   const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);if(!S.ms.length)return;
-  const now=serverNow(),t0=Math.max(S.ms[0].ts,now-86400),narrow=w<700,L=w*(narrow?.2:.16),R=w*(narrow?.05:.3),top=h*.22,bot=h*(narrow?.56:.72),pw=w-L-R;
+  const now=serverNow(),t0=Math.max(S.ms[0].ts,now-86400),narrow=w<700,L=w*(narrow?.2:.16),R=w*(narrow?.05:.3),top=contentTop(h,.22),bot=h*(narrow?(h<650?.47:.56):.72),pw=w-L-R;
   const g=ctx.createLinearGradient(0,top,0,bot);g.addColorStop(0,'#0b0820');g.addColorStop(1,'#120a2a');ctx.fillStyle=g;ctx.fillRect(L,top,pw,bot-top);
-  let hot=0,cold=0,none=0,sumD=0,nb=0;const rev=ease(clamp(el/1.5,0,1));
-  for(const r of S.ms){if(r.ts<t0)continue;for(const b of r.blocks){nb++;const x=L+(r.ts-t0)/(now-t0)*pw;if(x>L+pw*rev)continue;const y=top+12+seeded(b.hash,1)*(bot-top-24);
-    if(b.pow){hot++;sumD+=b.diff;const s=.5+.5*Math.sin(t/140+y),rr=18+8*s,gr=ctx.createRadialGradient(x,y,0,x,y,rr);gr.addColorStop(0,'rgba(255,255,230,1)');gr.addColorStop(.3,'rgba(255,200,60,.9)');gr.addColorStop(.7,'rgba(255,90,20,.35)');gr.addColorStop(1,'rgba(255,60,0,0)');ctx.fillStyle=gr;ctx.beginPath();ctx.arc(x,y-s*3,rr,0,7);ctx.fill()}
-    else if(b.fused>0){cold++;ctx.fillStyle='rgba(80,140,255,.18)';ctx.beginPath();ctx.arc(x,y,7,0,7);ctx.fill();ctx.fillStyle='#6fa8ff';ctx.fillRect(x-2,y-2,4,4)}
-    else{none++;ctx.fillStyle='#2a2f5a';ctx.fillRect(x-1.5,y-1.5,3,3)}}}
+  const stats=heatSummary(S.ms,t0),{hot,mixed,unknown}=stats,cold=stats.fused,none=stats.none,sumD=stats.difficulty,nb=stats.knownDifficulty;const rev=ease(clamp(el/1.5,0,1));
+  for(const r of S.ms){if(r.ts<t0)continue;for(const b of r.blocks){const x=L+(r.ts-t0)/(now-t0)*pw;if(x>L+pw*rev)continue;const y=top+12+seeded(b.hash,1)*(bot-top-24);
+    if(b.pow){const s=.5+.5*Math.sin(t/140+y),rr=18+8*s,gr=ctx.createRadialGradient(x,y,0,x,y,rr);gr.addColorStop(0,'rgba(255,255,230,1)');gr.addColorStop(.3,'rgba(255,200,60,.9)');gr.addColorStop(.7,'rgba(255,90,20,.35)');gr.addColorStop(1,'rgba(255,60,0,0)');ctx.fillStyle=gr;ctx.beginPath();ctx.arc(x,y-s*3,rr,0,7);ctx.fill()}
+    else if(b.fused>0){ctx.fillStyle='rgba(80,140,255,.18)';ctx.beginPath();ctx.arc(x,y,7,0,7);ctx.fill();ctx.fillStyle='#6fa8ff';ctx.fillRect(x-2,y-2,4,4)}
+    else{ctx.fillStyle='#2a2f5a';ctx.fillRect(x-1.5,y-1.5,3,3)}}}
   ctx.font='500 10px Arial';ctx.fillStyle='#4f5672';ctx.textAlign='center';ctx.textBaseline='top';for(let k=0;k<=4;k++){const ts=t0+(now-t0)*k/4;ctx.fillText(hhmm(ts),L+pw*k/4,bot+6)}
   const tx=L-w*.07,th=bot-top,share=nb?hot/nb:0;ctx.fillStyle='#14182e';ctx.fillRect(tx-7,top,14,th);ctx.beginPath();ctx.arc(tx,bot+12,14,0,7);ctx.fill();
   ctx.fillStyle=share?'#ff7a2a':'#3d6bff';ctx.fillRect(tx-4,bot-Math.max(4,th*share),8,Math.max(4,th*share)+6);ctx.beginPath();ctx.arc(tx,bot+12,10,0,7);ctx.fill();
   ctx.fillStyle='#8a90a8';ctx.textAlign='center';ctx.fillText(`${(share*100).toFixed(1)} % hot`,tx,bot+32);
   const rx=narrow?L:w-R+w*.03;let y=narrow?bot+52:top;ctx.textAlign='left';ctx.textBaseline='top';
   ctx.fillStyle=hot?'#ffb347':'#6fa8ff';ctx.font=`700 ${clamp(w*.03,22,44)}px Arial`;ctx.fillText(hot?`${fmtInt(hot)} hot`:'cold',rx,y);y+=clamp(w*.03,22,44)+12;
-  ctx.font=`500 ${narrow?12:13}px Arial`;const lines=[[`${fmtInt(hot)} blocks paid plasma with proof of work`,hot?'#ffb347':'#c9cde0'],[`Σ difficulty ${fmtInt(sumD)}`,'#8a90a8'],[`${fmtInt(cold)} blocks used fused QSR plasma`,'#6fa8ff'],[`${fmtInt(none)} contract blocks, no plasma`,'#6b7190'],[`${fmtInt(S.ms.filter(r=>r.ts>=t0).length)} momentums · no work inside`,'#6b7190']];
-  for(const[l,c]of lines){ctx.fillStyle=c;ctx.fillText(l,rx,y);y+=narrow?19:22}
+  ctx.font=`500 ${narrow?12:13}px Arial`;const lines=[[`${fmtInt(hot)} blocks paid plasma with proof of work`,hot?'#ffb347':'#c9cde0'],[`Σ difficulty ${fmtInt(sumD)}`,'#8a90a8'],[`${fmtInt(cold)} blocks include fused QSR plasma`,'#6fa8ff'],[`${fmtInt(mixed)} mixed PoW + fusion blocks`,'#b7a6ff'],[`${fmtInt(none)} blocks report no PoW or fusion`,'#6b7190'],[`${fmtInt(unknown)} blocks have incomplete plasma fields`,'#6b7190'],[`${fmtInt(S.ms.filter(r=>r.ts>=t0).length)} observed momentums`,'#6b7190']];
+  for(const[l,c]of lines){ctx.fillStyle=c;y+=wrapText(ctx,l,rx,y,w-rx-w*.04,narrow?16:18)*(narrow?16:18)+2}
   ctx.textAlign='center';ctx.font=`italic 500 ${narrow?10.5:13}px Arial`;ctx.fillStyle='#8a90a8';const qy=narrow?h*.9:h*.86;ctx.fillText('Proof-of-work activity observed in account blocks',w/2,qy);
   ctx.fillText('Plasma use does not establish settlement or finality',w/2,qy+(narrow?17:22));
 };
@@ -1431,16 +1456,16 @@ HT.frame=function(el,dt,t){
    scene: the lost link — today's slot clock vs the 2020 whitepaper's PoW-paced epochs (simulation)
    ============================================================ */
 const LL={id:'lostlink',el:$('#s-lostlink'),dur:22000,cv:$('#ll'),sim:null};
-LL.ready=()=>S.ready&&S.pillars.length>0;
-LL.caption=()=>'The lost link · today: slots come from the clock · 2020 whitepaper draft: epochs paced by proof of work (simulation, 6× speed)';
-LL.reset=function(){const P=pillarsByWeight().slice(0,12),tot=P.reduce((a,p)=>a+p.w,0)||1;
-  this.sim={P:P.map(p=>({name:p.name,hp:p.w/tot})),D:30,target:60,zeta:8,speed:6,tim:0,es:0,fin:[],len:0,hist:[],ep:1};this.newEpoch()};
+LL.ready=()=>S.ready&&S.pillars.some(p=>p.w>0);
+LL.caption=()=>'Illustrative PoW model · delegated weight is an assumed hashpower share · 6× speed';
+LL.reset=function(){const P=pillarsByWeight().filter(p=>p.w>0).slice(0,innerHeight<650?6:12),tot=P.reduce((a,p)=>a+p.w,0)||1;
+  this.sim={P:P.map(p=>({name:p.name,hp:p.w/tot})),D:30,target:60,zeta:Math.min(8,P.length),speed:6,tim:0,es:0,fin:[],len:0,hist:[],ep:1};this.newEpoch()};
 LL.newEpoch=function(){const s=this.sim;s.fin=s.P.map(p=>-Math.log(1-Math.random())*s.D/p.hp/12);const so=[...s.fin].sort((a,b)=>a-b);s.len=so[s.zeta-1];s.es=s.tim};
-LL.enter=function(){if(!this.sim||this.sim.P.length===0)this.reset()};
+LL.enter=function(){this.reset()};
 LL.frame=function(el,dt,t){
-  const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);const s=this.sim;if(!s)return;
+  const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);if(this.sim&&this.sim.P.length>Math.min(12,innerHeight<650?6:12))this.reset();const s=this.sim;if(!s)return;
   s.tim+=dt*s.speed;if(s.tim-s.es>=s.len){s.hist.push(s.len);if(s.hist.length>24)s.hist.shift();s.D*=clamp(s.target/s.len,.5,2);s.ep++;this.newEpoch()}
-  const narrow=w<700,mid=w*.42,ax=w*.06,aw=narrow?w*.88:mid-w*.1,ay=narrow?h*.17:h*.22,hf=clamp(w*.018,16,26);
+  const narrow=w<700,mid=w*.42,ax=w*.06,aw=narrow?w*.88:mid-w*.1,ay=contentTop(h,narrow?.17:.22),hf=clamp(w*.018,16,26);
   if(narrow){ctx.fillStyle='rgba(255,255,255,.08)';ctx.fillRect(ax,h*.37,aw,1)}else{ctx.fillStyle='rgba(255,255,255,.08)';ctx.fillRect(mid,h*.18,1,h*.7)}
   ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillStyle='#6ff34d';ctx.font='600 12px Arial';ctx.fillText(S.mode==='sim'?'TODAY · SIMULATED DATA':'TODAY · MAINNET',ax,ay);
   ctx.fillStyle='#fff';ctx.font=`700 ${hf}px Arial`;ctx.fillText('the slot clock',ax,ay+hf+6);
@@ -1448,26 +1473,26 @@ LL.frame=function(el,dt,t){
   for(let i=0;i<18;i++){const slot=cur-17+i,ss=slotState(slot,cur,frac,first),x=ax+i*cw;ctx.fillStyle=ss.st==='blocks'?domColor(ss.m):ss.st==='ok'?'#4b44e4':ss.st==='missed'?'#9a2b2b':ss.st==='wait'?'#6ff34d':'#141831';ctx.fillRect(x,yS,cw-3,sh)}
   const nx=ax+(17+frac)*cw;ctx.fillStyle='#fff';ctx.fillRect(nx,yS-10,2,sh+20);
   ctx.fillStyle='#8a90a8';ctx.font=`500 ${narrow?11:12}px Arial`;['a momentum every 10 s, when the clock says so','the slot is read from each node\'s system clock','no work inside: the timestamp is a signed claim'].forEach((l,i)=>ctx.fillText(l,ax,yS+sh+(narrow?24:34)+i*(narrow?16:20)));
-  const rx=narrow?ax:mid+w*.04,rw=narrow?aw:w*.94-rx,ry=narrow?h*.41:h*.22;ctx.fillStyle='#ffb341';ctx.font='600 12px Arial';ctx.fillText('2020 WHITEPAPER DRAFT · SIMULATION',rx,ry);
+  const rx=narrow?ax:mid+w*.04,rw=narrow?aw:w*.94-rx,ry=narrow?Math.max(h*.41,ay+hf+120):ay;ctx.fillStyle='#ffb341';ctx.font='600 12px Arial';ctx.fillText('ILLUSTRATIVE MODEL · SIMULATION',rx,ry);
   ctx.fillStyle='#fff';ctx.font=`700 ${hf}px Arial`;ctx.fillText(`epoch #${s.ep} paced by proof of work`,rx,ry+hf+6);
   const el2=s.tim-s.es,bh=narrow?11:Math.min(16,h*.022),gap=narrow?5:5,by=narrow?ry+hf+20:h*.3,lw=narrow?84:110,tail=narrow?22:55,bw=rw-lw-tail;ctx.font='500 10px Arial';
   s.P.forEach((p,i)=>{const pr=clamp(el2/s.fin[i],0,1),y=by+i*(bh+gap);ctx.fillStyle='#14182e';ctx.fillRect(rx+lw,y,bw,bh);ctx.fillStyle=pr>=1?'#6ff34d':'#3d6bff';ctx.fillRect(rx+lw,y,bw*pr,bh);
     ctx.fillStyle=pr>=1?'#6ff34d':'#8a90a8';ctx.textAlign='right';ctx.textBaseline='middle';const nm=narrow?14:16;ctx.fillText(p.name.length>nm?p.name.slice(0,nm-1)+'…':p.name,rx+lw-8,y+bh/2);if(pr>=1){ctx.textAlign='left';ctx.fillText(narrow?'✓':'✓ finishing PoW',rx+lw+bw+5,y+bh/2)}});
   const done=s.fin.filter(f=>el2>=f).length,cy=by+s.P.length*(bh+gap)+20;ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillStyle='#c9cde0';ctx.font=`500 ${narrow?11:12}px Arial`;
   const st1=`${done} of ${s.zeta} finishing PoWs needed to close the epoch`,st2=`${el2.toFixed(0)} s elapsed · difficulty ×${(s.D/30).toFixed(2)}`;
-  if(narrow){ctx.fillText(st1,rx,cy);ctx.fillText(st2,rx,cy+16)}else ctx.fillText(st1+' · '+st2,rx,cy);
-  const gy=cy+(narrow?32:24),gh=narrow?h*.09:h*.14,gw=rw-(narrow?62:40);ctx.strokeStyle='rgba(255,255,255,.08)';ctx.strokeRect(rx,gy,gw,gh);ctx.setLineDash([4,4]);ctx.strokeStyle='rgba(255,179,65,.6)';const yt=gy+gh-(s.target/180)*gh;ctx.beginPath();ctx.moveTo(rx,yt);ctx.lineTo(rx+gw,yt);ctx.stroke();ctx.setLineDash([]);
+  const lines=wrapText(ctx,st1+' · '+st2,rx,cy,rw,16);
+  const gy=cy+lines*16+12,gh=narrow?h*.09:h*.14,gw=rw-(narrow?62:40);ctx.strokeStyle='rgba(255,255,255,.08)';ctx.strokeRect(rx,gy,gw,gh);ctx.setLineDash([4,4]);ctx.strokeStyle='rgba(255,179,65,.6)';const yt=gy+gh-(s.target/180)*gh;ctx.beginPath();ctx.moveTo(rx,yt);ctx.lineTo(rx+gw,yt);ctx.stroke();ctx.setLineDash([]);
   ctx.fillStyle='#ffb341';ctx.font='500 10px Arial';ctx.fillText('target 1 min',rx+gw+4,yt+3);
   s.hist.forEach((v,i)=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(rx+8+i*(gw-16)/23,gy+gh-clamp(v/180,0,1)*gh,3,0,7);ctx.fill()});
-  ctx.fillStyle='#6b7190';ctx.fillText(narrow?'epoch lengths retarget toward 1 min, like Bitcoin':'epoch lengths: difficulty retargets until they settle on the target, like Bitcoin',rx,gy+gh+16);
-  ctx.fillStyle='rgba(255,179,65,.85)';ctx.font='600 11px Arial';ctx.textAlign='center';ctx.fillText(narrow?'SIMULATION · 2020 whitepaper design · not on mainnet':'SIMULATION of the 2020 whitepaper design · not running on mainnet',w/2,h*.95);
+  ctx.fillStyle='#6b7190';wrapText(ctx,'illustrative epoch lengths target 1 min',rx,gy+gh+16,rw,14);
+  ctx.fillStyle='rgba(255,179,65,.85)';ctx.font='600 11px Arial';ctx.textAlign='center';wrapText(ctx,narrow?'SIMULATION · assumed hashpower, not mainnet':'ILLUSTRATIVE SIMULATION · delegated weight is not measured hashpower',w/2,h*.93,w*.94,14);
 };
 
 /* ============================================================
    time notary — any account block, bracketed between two momentums and mapped to Bitcoin
    ============================================================ */
 const NT={open:false,last:null,request:0,focus:null};
-function ntOpen(q){if(!NT.open)NT.focus=document.activeElement;NT.open=true;$('#notary').classList.add('show');$('#notary').setAttribute('aria-hidden','false');if(q){$('#ntI').value=q;ntRun(q)}else setTimeout(()=>$('#ntI').focus(),60)}
+function ntOpen(q){if(!NT.open)NT.focus=document.activeElement;NT.open=true;$('#notary').classList.add('show');$('#notary').setAttribute('aria-hidden','false');if(q){$('#ntI').value=q;ntRun(q)}setTimeout(()=>$('#ntI').focus(),60)}
 function ntClose(){NT.open=false;NT.request++;$('#notary').classList.remove('show');$('#notary').setAttribute('aria-hidden','true');if(NT.focus&&NT.focus.isConnected)NT.focus.focus()}
 async function btcAt(ts){try{const r=await btcFetch('/api/v1/mining/blocks/timestamp/'+Math.floor(ts));if(r.ok)return await r.json()}catch(e){}return null}
 async function ntRun(q){
@@ -1490,7 +1515,7 @@ async function ntRun(q){
       notAfter:cd?{momentum:cd.momentumHeight,timestamp:cd.momentumTimestamp,utc:new Date(cd.momentumTimestamp*1000).toISOString(),confirmations:cd.numConfirmations}:null,
       windowSeconds:ack&&cd?cd.momentumTimestamp-ack.timestamp:null,windowMomentums:ack&&cd?cd.momentumHeight-ack.height:null,
       bitcoin:{atNotBefore:ba&&{height:ba.height,timestamp:ba.timestamp},atNotAfter:bb&&{height:bb.height,timestamp:bb.timestamp}},
-      anchor:{zenonGenesisCommitsTo:'bitcoin #'+BTC_ANCHOR,hash:S.genesis.btc},source:S.node,verification:'node-reported; not independently verified',bitcoinMapping:'timestamp correlation, not a timestamp proof',issued:new Date().toISOString()};
+      anchor:{zenonGenesisCommitsTo:'bitcoin #'+BTC_ANCHOR,hash:S.genesis.btc},source:S.node,verification:'node-reported; not independently verified',bitcoinMapping:'miner-timestamp correlation, not a timestamp proof or historical chain tip',issued:new Date().toISOString()};
     NT.last=cert;
     const row=(k,v)=>`<div class="row"><span>${k}</span><div>${v}</div></div>`,utc=s=>s?s.replace('T',' ').replace('.000Z',' UTC'):'—';
     out.innerHTML='<p class="warn">Node-reported observation · not independently verified. Bitcoin mapping is timestamp context, not proof.</p>'+`<div class="cert">`+
@@ -1499,7 +1524,7 @@ async function ntRun(q){
       row('Not before',ack?`<b>#${fmtInt(ack.height)}</b> ${utc(cert.notBefore.utc)} <i>the momentum it acknowledged</i>`:'—')+
       row('Not after',cd?`<b>#${fmtInt(cd.momentumHeight)}</b> ${utc(cert.notAfter.utc)} <i>the momentum that sealed it · ${fmtInt(cd.numConfirmations)} confirmations</i>`:'<b>not confirmed yet</b>')+
       (cert.windowSeconds!=null?`<div class="row big"><span>Window</span><div><b>${dur(cert.windowSeconds)}</b> · ${cert.windowMomentums} momentum${cert.windowMomentums===1?'':'s'}</div></div>`:'')+
-      row('Bitcoin',ba||bb?`tip was <b>#${ba?fmtInt(ba.height):'?'}</b> → <b>#${bb?fmtInt(bb.height):'?'}</b> <i>${esc(host(BTC_API))}, by miner-reported timestamp</i>`:'<i>unavailable</i>')+
+      row('Bitcoin',ba||bb?`timestamp lookup <b>#${ba?fmtInt(ba.height):'?'}</b> → <b>#${bb?fmtInt(bb.height):'?'}</b> <i>${esc(host(BTC_API))}, by miner-reported timestamp</i>`:'<i>unavailable</i>')+
       row('Anchor',`Zenon genesis commits to Bitcoin #${fmtInt(BTC_ANCHOR)} <i>${esc(S.genesis.btc.slice(0,12))}…</i>`)+
       `</div><div class="nt-act"><button id="ntCopy">Copy JSON</button><span class="dim">source: ${esc(S.node)}</span></div>`;
     $('#ntCopy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(JSON.stringify(NT.last,null,2));$('#ntCopy').textContent='Copied'}catch(e){$('#ntCopy').textContent='Copy blocked'}});
@@ -1530,7 +1555,7 @@ function drawBX(t){
 }
 const GW={last:-1};
 function watchSlots(){ // a slot whose momentum never came: feel it everywhere
-  if(!S.ready||!S.ms.length||(S.mode!=='live'&&S.mode!=='sim'))return;const pt=(serverNow()-GENESIS_TS)/TICK,cur=Math.floor(pt),chk=(pt-cur)*TICK>3.5?cur:cur-1;
+  if(!S.ready||!S.ms.length||(S.mode!=='live'&&S.mode!=='sim'))return;const chk=slotOf(S.lastTs)-1;
   if(GW.last<0){GW.last=chk;return}if(chk<=GW.last)return;
   for(let s=Math.max(GW.last+1,chk-3);s<=chk;s++)if(!S.bySlot.has(s)&&s>=firstSlot())bus.emit('missed',s);GW.last=chk;
 }
@@ -1545,7 +1570,7 @@ function ticker(t){
   $('#tkS').textContent=S.mode==='live'?'● LIVE':S.mode==='sim'?'● SIMULATED DATA':S.mode==='reconnecting'?'● RECONNECTING':'● CONNECTING';
   $('#tkM').textContent=last?`#${fmtInt(last.h)} · ${pillarName(last.producer)}${last.n?` · ${last.n} block${last.n>1?'s':''}`:''}`:'—';
   $('#tkB').style.width=(frac*100).toFixed(1)+'%';$('#tkN').textContent=`next in ${Math.max(1,Math.ceil(TICK-frac*TICK))} s`;
-  const sl=Math.floor(pt);$('#tkX').textContent=S.frontier?`MISSED ${Math.max(0,(1-S.frontier/(sl+1))*100).toFixed(2)} %`:'';$('#tkC').textContent=S.btc?`BTC #${fmtInt(S.btc)}`:'';
+  const sl=Math.floor(pt);$('#tkX').textContent=S.frontier?`MISSED ${Math.max(0,(1-S.frontier/(slotOf(S.lastTs)+1))*100).toFixed(2)} %`:'';$('#tkC').textContent=S.btc?`BTC #${fmtInt(S.btc)}`:'';
 }
 
 /* ============================================================
@@ -1554,27 +1579,31 @@ function ticker(t){
 const SC={list:[INTRO,BL,CH,GL,DI,CO,WF,BC,LM,TL,EPR,HT,LL,SP,HI,PI,OUTRO],cur:-1,paused:false,pinned:null,cue:0,beat:false};
 const byId=id=>SC.list.find(s=>s.id===id);
 const PINNABLE=['blocks','chain','glyphs','dial','constellation','waterfall','clocks','loom','timeline','epoch','heat','lostlink','spiral','history','pillars'];
+function sceneAvailability(s){return!s.ready||s.ready()}
+function availabilityMessage(s){if(s.id==='clocks')return'Bitcoin data is unavailable. Retrying in the background.';if(s.id==='history'||s.id==='spiral')return'History samples are unavailable. Retrying in the background.';if(['pillars','constellation','waterfall','lostlink'].includes(s.id))return'Pillar data is unavailable. Retrying in the background.';return'Waiting for more ledger observations.'}
+function enterScene(s,t){s.entered=true;s.t0=t;s.enter&&s.enter()}
 function go(id){
   const i=typeof id==='number'?id:SC.list.findIndex(s=>s.id===id);if(i<0||i===SC.cur)return;
-  const prev=SC.list[SC.cur];
-  if(prev){prev.el.classList.remove('on');prev.el.classList.add('out');prev.leaving=performance.now();prev.exit&&prev.exit()}
-  SC.list.forEach((v,n)=>v.el.setAttribute('aria-hidden',String(n!==i)));
-  SC.cur=i;const s=SC.list[i];s.el.classList.remove('out');void s.el.offsetWidth;s.el.classList.add('on');s.t0=performance.now();s.leaving=0;s.enter&&s.enter();
-  EP.el.classList.toggle('show',s.id==='timeline'||s.id==='history');if(EP.el.classList.contains('show'))updEpoch(true);
-  updNav();
+  const previous=SC.list[SC.cur];if(previous){previous.el.classList.remove('on');previous.el.classList.add('out');previous.leaving=performance.now();previous.exit&&previous.exit()}
+  SC.list.forEach((scene,n)=>scene.el.setAttribute('aria-hidden',String(n!==i)));
+  SC.cur=i;SC.cue=0;SC.beat=false;const s=SC.list[i];s.el.classList.remove('out');void s.el.offsetWidth;s.el.classList.add('on');s.t0=performance.now();s.leaving=0;s.entered=false;
+  if(sceneAvailability(s))enterScene(s,s.t0);
+  EP.el.classList.toggle('show',s.id==='timeline'||s.id==='history');if(EP.el.classList.contains('show'))updEpoch(true);updNav();
 }
 function nextScene(){let i=SC.cur;for(let k=0;k<SC.list.length;k++){i=(i+1)%SC.list.length;const s=SC.list[i];if(s.id==='intro')continue;if(s.ready&&!s.ready())continue;return go(i)}}
 let lastT=performance.now();
 function frame(t){
-  const dt=Math.min(.05,(t-lastT)/1000);lastT=t;const s=SC.list[SC.cur];
-  if(s){const el=(t-s.t0)/1000;s.frame&&s.frame(el,dt,t,false);
-    const done=s.done?s.done(el):el*1000>s.dur;
-    // cut on the beat: once a scene has had its time, wait for the next momentum (at most 12 s)
-    if(done&&!SC.paused&&!(s.keep&&s.keep())&&!NT.open&&(s.id==='intro'||!SC.pinned)){if(!SC.cue)SC.cue=t;
-      if(SC.beat||t-SC.cue>12000||S.mode==='connecting'){SC.cue=0;SC.beat=false;if(s.id==='intro'){if(SC.pinned&&byId(SC.pinned).ready())go(SC.pinned);else nextScene()}else nextScene()}}}
-  for(const o of SC.list)if(o!==s&&o.leaving){if(t-o.leaving<1500)o.frame&&o.frame((t-o.t0)/1000,dt,t,true);else{o.leaving=0;if(o.cv){const c=fit(o.cv);c.ctx.clearRect(0,0,c.w,c.h)}}}
+  const dt=Math.min(.05,(t-lastT)/1000);lastT=t;const s=SC.list[SC.cur],available=s&&sceneAvailability(s),notice=$('#availability');
+  notice.hidden=!s||available;if(s&&!available)notice.textContent=availabilityMessage(s);
+  if(s){if(available){if(!s.entered)enterScene(s,t);s.frame&&s.frame((t-s.t0)/1000,dt,t,false)}
+    const el=(t-s.t0)/1000,done=s.done?s.done(el):el*1000>s.dur;
+    if(!available&&!SC.pinned)nextScene();
+    else if(done&&!SC.paused&&!(s.keep&&s.keep())&&!NT.open&&(s.id==='intro'||!SC.pinned)){if(!SC.cue)SC.cue=t;
+      if(s.id==='intro'||SC.beat||t-SC.cue>12000||S.mode==='connecting'){SC.cue=0;SC.beat=false;if(s.id==='intro'&&SC.pinned)go(SC.pinned);else nextScene()}}
+  }
+  for(const old of SC.list)if(old!==s&&old.leaving){if(t-old.leaving<1500){if(old.entered&&sceneAvailability(old))old.frame&&old.frame((t-old.t0)/1000,dt,t,true)}else{old.leaving=0;if(old.cv){const c=fit(old.cv);c.ctx.clearRect(0,0,c.w,c.h)}}}
   if(EP.el.classList.contains('show'))updEpoch();
-  if(OVERLAY&&SC.cur<0&&S.ready){if(SC.pinned){if(byId(SC.pinned).ready())go(SC.pinned)}else nextScene()} // overlay skips the intro
+  if(OVERLAY&&SC.cur<0&&S.ready){if(SC.pinned)go(SC.pinned);else nextScene()}
   watchSlots();drawBX(t);ticker(t);hud(t);requestAnimationFrame(frame);
 }
 
@@ -1592,7 +1621,7 @@ $('#nav').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)
   if(id==='notary'){ntOpen();return}
   if(id==='auto'){history.replaceState(null,'',location.pathname+location.search);SC.pinned=null;updNav();return}
   location.hash=id});
-function readHash(){const h=location.hash.slice(1);SC.pinned=PINNABLE.includes(h)?h:null;if(SC.pinned&&SC.cur>=0&&SC.list[SC.cur].id!=='intro'&&byId(SC.pinned).ready())go(SC.pinned);updNav()}
+function readHash(){const h=location.hash.slice(1);SC.pinned=PINNABLE.includes(h)?h:null;if(SC.pinned&&SC.cur>=0&&SC.list[SC.cur].id!=='intro')go(SC.pinned);updNav()}
 window.addEventListener('hashchange',readHash);
 let navT=0;function showNav(){$('#nav').classList.add('show');clearTimeout(navT);navT=setTimeout(()=>$('#nav').classList.remove('show'),2800)}
 window.addEventListener('mousemove',showNav);window.addEventListener('touchstart',showNav,{passive:true});
@@ -1607,17 +1636,17 @@ window.addEventListener('keydown',e=>{
   else if(k==='0'||k==='a'){history.replaceState(null,'',location.pathname+location.search);SC.pinned=null;updNav()}
   else if(k===' '){SC.paused=!SC.paused;updNav();e.preventDefault()}
   else if(k==='f'){if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});else document.documentElement.requestFullscreen().catch(()=>{})}
-  else if(k==='ArrowRight'){nextScene()}
+  else if(k==='ArrowRight'){const i=PINNABLE.indexOf(SC.list[SC.cur]?.id);location.hash=PINNABLE[(i+1)%PINNABLE.length]}
   showNav();
 });
 let rsT=0;window.addEventListener('resize',()=>{clearTimeout(rsT);rsT=setTimeout(()=>{CH.built=false;EPR.key='';CO.key='';LM.key='';BL.sizes();BL.dirty=true;PI.dirty=true;TL.dirty=true;const s=SC.list[SC.cur];if(s===INTRO)INTRO.build();if(s===CH)CH.build()},200)});
 
 /* ---------- wiring ---------- */
 bus.on('live',list=>{if(SC.cue)SC.beat=true;if(!CALM&&!OVERLAY){const st=$('#stage');st.classList.remove('kick');void st.offsetWidth;st.classList.add('kick')}
-  CH.onLive(list);BL.onLive(list);DI.onLive(list);TL.dirty=true;TL.pulse=performance.now();PI.onLive(list);INTRO.ripple=performance.now();beat();
+  historyTip();CH.onLive(list);BL.onLive(list);DI.onLive(list);TL.dirty=true;TL.pulse=performance.now();PI.onLive(list);INTRO.ripple=performance.now();beat();
   list.forEach((r,i)=>setTimeout(()=>sndMomentum(r),i*350))});
-bus.on('bulk',()=>{BL.dirty=true;TL.dirty=true});
-bus.on('pillars',()=>{PI.dirty=true;CH.refreshNames()});
+bus.on('bulk',()=>{BL.dirty=true;TL.dirty=true;if(CH.built&&CH.conf[0]?.r.h!==S.frontier)CH.build();historyTip()});
+bus.on('pillars',()=>{PI.dirty=true;CO.key='';CH.refreshNames()});
 
 (async function boot(){
   BL.sizes();readHash();start();if(!FORCE_SIM)btcStart();

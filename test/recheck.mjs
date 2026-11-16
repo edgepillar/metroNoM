@@ -16,15 +16,20 @@ const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||und
 const local='http://localhost:8857/';
 let mock;
 try{
- if(process.argv.includes('--mobile'))await mobile(process.argv.at(-1));
+ if(process.argv.includes('--mobile')){if(new URL(process.argv.at(-1)).port==='8857')await startMock();await mobile(process.argv.at(-1));}
  else if(process.argv.includes('--live'))await live(process.argv.at(-1));
  else{
-  mock=spawn(process.execPath,[path.join(HERE,'mock-node.js'),'--headers','../vercel.json','--port','8857'],{cwd:HERE,stdio:['ignore','pipe','inherit']});
-  await new Promise((resolve,reject)=>{mock.on('error',reject);mock.on('exit',c=>reject(Error('Mock exited '+c)));mock.stdout.on('data',b=>{if(b.toString().includes(' on http'))resolve();});});
+  await startMock();
   await fixtures();
  }
 }finally{await browser.close();if(mock)mock.kill();}
 console.log(JSON.stringify({total,passed:total-failed,failed}));process.exit(failed?1:0);
+async function startMock(){
+  mock=spawn(process.execPath,[path.join(HERE,'mock-node.js'),'--headers','../vercel.json','--port','8857'],{cwd:HERE,stdio:['ignore','pipe','inherit']});
+  await new Promise((resolve,reject)=>{mock.on('error',reject);mock.on('exit',c=>reject(Error('Mock exited '+c)));mock.stdout.on('data',b=>{if(b.toString().includes(' on http'))resolve();});});
+}
+function target(base,id){const url=new URL(base);url.searchParams.set('calm','');if(url.port==='8857'){url.searchParams.set('node','ws://localhost:8857/ws');url.searchParams.set('btcapi','http://localhost:8857')}url.hash=id;return url.href;}
+async function prerequisites(page){try{await page.waitForFunction(()=>S.ready&&S.hs&&S.pillars.length>0&&BT.blocks.length>=3,{},{timeout:60000});return true}catch{const state=await page.evaluate(()=>({mode:S.mode,node:S.node,ready:S.ready,alive:node.alive,loaded:S.ms.length,history:S.hist.length,pillars:S.pillars.length,bitcoin:BT.blocks.length}));check(false,'prerequisite data available',JSON.stringify(state));return false}}
 async function fixtures(){
  const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(local+'?node='+encodeURIComponent('ws://localhost:8857/ws')+'&btcapi='+encodeURIComponent(local.slice(0,-1)));
@@ -86,21 +91,23 @@ async function fixtures(){
 }
 async function live(base){
  const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(base+'/?calm#dial');await page.waitForFunction(()=>S.ready&&S.hs&&S.pillars.length>0&&BT.blocks.length>=3,{},{timeout:60000});
+ await page.goto(target(base,'dial'));if(!await prerequisites(page)){await page.close();return}
  const evidence=await page.evaluate(async()=>{
-  const sample=S.ms.at(-3),response=await node.call('ledger.getDetailedMomentumsByHeight',[sample.h,1]);const raw=response.list[0];
-  return{node:S.node,mode:S.mode,frontier:S.frontier,age:Date.now()/1000-S.lastTs,pillars:S.pillars.length,bitcoin:S.btc,historyLast:S.hs.h.at(-1),sampleHeight:sample.h,sampleHashMatches:raw.momentum.hash===sample.hash,sampleCountMatches:raw.blocks.length===sample.n,nativeVolume:sample.moved,genesis:S.genesis.btc,loaded:S.ms.length};
+  const sample=S.ms.at(-10),response=await node.call('ledger.getDetailedMomentumsByHeight',[sample.h,1]);const raw=response.list[0];
+  return{node:S.node,mode:S.mode,frontier:S.frontier,age:Date.now()/1000-S.lastTs,pillars:S.pillars.length,bitcoin:S.btc,historyLast:S.hs.h.at(-1),sampleHeight:sample.h,sampleHash:sample.hash,sampleHashMatches:raw.momentum.hash===sample.hash,sampleCountMatches:raw.blocks.length===sample.n,nativeVolume:sample.moved,genesis:S.genesis.btc,loaded:S.ms.length};
  });console.log('LIVE '+JSON.stringify(evidence));check(evidence.mode==='live'&&evidence.age>=-30&&evidence.age<90,'live node frontier is fresh');check(evidence.sampleHashMatches&&evidence.sampleCountMatches,'loaded account blocks match a fresh RPC response at the pinned height');check(evidence.historyLast===evidence.frontier,'live history endpoint follows the current observed frontier');
+ const WebSocket=require('ws');const reference=await new Promise(resolve=>{const ws=new WebSocket('wss://node.atsocy.com:35998',{handshakeTimeout:8000});const timer=setTimeout(()=>{ws.terminate();resolve(null)},12000);ws.on('error',()=>{clearTimeout(timer);resolve(null)});ws.on('open',()=>ws.send(JSON.stringify({jsonrpc:'2.0',id:1,method:'ledger.getMomentumsByHeight',params:[evidence.sampleHeight,1]})));ws.on('message',raw=>{clearTimeout(timer);try{resolve(JSON.parse(raw).result?.list?.[0]||null)}catch{resolve(null)}ws.close()});});check(reference?.hash===evidence.sampleHash,'a second public node agrees at the sampled height',reference?String(reference.height):'reference unavailable');
  for(const scene of scenes){await page.evaluate(id=>{location.hash=id},scene);await page.waitForFunction(id=>SC.cur>=0&&SC.list[SC.cur].id===id,scene,{timeout:30000});check(await page.locator('#statusTxt').innerText().then(t=>t.startsWith('LIVE')),'live scene '+scene);}
  check(errors.length===0,'live audit has no browser errors',errors.join(' | '));await page.close();
 }
 async function mobile(base){
  const page=await browser.newPage({viewport:{width:320,height:568},isMobile:true,hasTouch:true,reducedMotion:'reduce'});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{const proto=CanvasRenderingContext2D.prototype,original=proto.fillText;proto.fillText=function(text,x,y,maxWidth){if(window.__capture&&this.canvas.isConnected&&this.globalAlpha>.15&&!this.__clipped){const r=this.canvas.getBoundingClientRect(),m=this.getTransform(),metric=this.measureText(text),width=Math.min(metric.width,maxWidth||Infinity),height=parseFloat(this.font.match(/([\d.]+)px/)?.[1]||12);let left=x-(this.textAlign==='center'?width/2:['right','end'].includes(this.textAlign)?width:0),top=y-(['top','hanging'].includes(this.textBaseline)?0:this.textBaseline==='middle'?height/2:height);const points=[[left,top],[left+width,top],[left,top+height],[left+width,top+height]].map(([a,b])=>({x:r.left+(m.a*a+m.c*b+m.e)*r.width/this.canvas.width,y:r.top+(m.b*a+m.d*b+m.f)*r.height/this.canvas.height}));if(points.some(p=>p.x< -2||p.x>innerWidth+2||p.y< -2||p.y>innerHeight+2))window.__overflow.push(String(text).slice(0,100));}return original.call(this,text,x,y,...(maxWidth===undefined?[]:[maxWidth]));};const clip=proto.clip,save=proto.save,restore=proto.restore;proto.clip=function(...a){this.__clipped=true;return clip.apply(this,a)};proto.save=function(){(this.__clips||=[]).push(!!this.__clipped);return save.call(this)};proto.restore=function(){this.__clipped=this.__clips?.pop()||false;return restore.call(this)};});
- await page.goto(base+'/?calm#dial');await page.waitForFunction(()=>S.ready&&S.hs&&S.pillars.length&&BT.blocks.length>=3,{},{timeout:60000});
+ await page.goto(target(base,'dial'));if(!await prerequisites(page)){await page.close();return}
  for(const [width,height]of [[320,568],[390,844],[844,390],[768,1024]]){
   await page.setViewportSize({width,height});await page.waitForTimeout(300);
   for(const id of scenes){await page.evaluate(id=>{location.hash=id},id);await page.waitForFunction(id=>SC.cur>=0&&SC.list[SC.cur].id===id,id,{timeout:10000});
+   await page.waitForTimeout(200);
    const overflow=await page.evaluate(()=>{const s=SC.list[SC.cur];s.t0=performance.now()-12000;BX.t=0;window.__overflow=[];window.__capture=true;try{s.frame?.(12,.01,performance.now(),false)}finally{window.__capture=false}return [...new Set(window.__overflow)]});
    await page.screenshot({path:path.join(shots,`${width}x${height}_${id}.png`)});check(overflow.length===0,`${width}x${height} ${id} canvas labels fit`,overflow.slice(0,3).join(' | '));
   }
