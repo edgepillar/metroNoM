@@ -1,0 +1,10 @@
+node_modules/
+test/node_modules/
+test/shots/
+public/
+.vercel/
+.local/
+.env
+.env.*
+.DS_Store
+*.zip

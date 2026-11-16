@@ -1,0 +1,21 @@
+{
+  "name": "metronom-tests",
+  "private": true,
+  "description": "Local mock node, locked-down embed harness and Playwright smoke tests for index.html. Not part of the deployed site.",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "mock": "node mock-node.js --html ../index.html --headers ../vercel.json --port 8787",
+    "embed": "node artifact-sim.js --html ../index.html --port 8790",
+    "probe": "node probe-nodes.mjs",
+    "smoke": "node smoke.mjs",
+    "smoke:prod": "node smoke.mjs --url",
+    "regression": "node smoke.mjs --regression"
+  },
+  "devDependencies": {
+    "playwright": "1.65.1",
+    "ws": "8.23.0"
+  }
+}
