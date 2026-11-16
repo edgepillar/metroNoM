@@ -18,7 +18,7 @@ try{
  await page.goto(base.href);
  await page.waitForFunction(()=>S.mode==='live'&&S.ready&&S.ms.some(m=>m.n>0)&&SC.cur>=0&&SC.list[SC.cur].id==='epoch',{},{timeout:60000});
  const evidence=await page.evaluate(async()=>{
-  const sample=[...S.ms].reverse().find(m=>m.n>0),raw=(await node.call('ledger.getDetailedMomentumsByHeight',[sample.h,1])).list[0];
+  const sample=[...S.ms].reverse().find(m=>m.n>0),raw=(await node.call('ledger.getDetailedMomentumsByHeight',[sample.h,1],15000)).list[0];
   const sums={ZNN:0n,QSR:0n};for(const b of raw.blocks)if(b.blockType===2||b.blockType===4){const asset=b.tokenStandard===ZNN?'ZNN':b.tokenStandard===QSR?'QSR':null;if(asset)sums[asset]+=BigInt(b.amount||'0')}
   const expected={ZNN:Number(sums.ZNN)/1e8,QSR:Number(sums.QSR)/1e8},stats=epochStats(EPR.info().s0,EPR.info().cur);
   return{node:S.node,height:sample.h,hash:sample.hash,count:sample.n,sameHash:raw.momentum.hash===sample.hash,sameBlocks:raw.blocks.map(b=>b.hash).sort().join(',')===sample.blocks.map(b=>b.hash).sort().join(','),expected,moved:sample.moved,stats,block:sample.blocks[0].hash};

@@ -97,6 +97,9 @@ async function fixtures(){
  const partial=await browser.newPage();await partial.goto(local+'?node='+encodeURIComponent('ws://localhost:8857/incomplete,ws://localhost:8857/ws')+'&btcapi='+encodeURIComponent(local.slice(0,-1)));
  let complete=true;try{await partial.waitForFunction(()=>S.ready&&node.url.endsWith('/ws'),{},{timeout:11000});}catch{complete=false}
  check(complete,'incomplete node data fails over to a complete source');await partial.close();
+ const slow=await browser.newPage();await slow.goto(local+'?node='+encodeURIComponent('ws://localhost:8857/slowhistory')+'&btcapi='+encodeURIComponent(local.slice(0,-1))+'#history');
+ let progressive=true;try{await slow.waitForFunction(()=>S.hs&&S.hist.length>=3&&!S.historyComplete&&SC.cur>=0&&SC.list[SC.cur].id==='history'&&document.querySelector('#availability').hidden,{},{timeout:15000})}catch{progressive=false}
+ check(progressive,'partial history becomes usable before later sample groups finish');await slow.close();
  check(errors.length===0,'data controls have no browser errors',errors.join(' | '));
 }
 async function live(base){

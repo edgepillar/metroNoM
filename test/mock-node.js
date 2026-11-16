@@ -51,6 +51,7 @@ setInterval(() => {
 }, TICK * 1000);
 function handle(req, ws) {
   const { id, method, params = [] } = req; let result = null;
+  if(ws.behavior==='/slowhistory'&&method==='ledger.getMomentumsByHeight'&&params[0]>1&&params[0]<FRONT-1000){ws.historyCalls=(ws.historyCalls||0)+1;if(ws.historyCalls>7)return null;}
   if (method === 'ledger.subscribe') { result = '0x' + rh(32); if (params[0] === 'momentums') subs.add([ws, result]); }
   else if (method === 'ledger.getFrontierMomentum') result = {...chain.get(FRONT).momentum,timestamp:ws.behavior==='/stale'?GEN:chain.get(FRONT).momentum.timestamp};
   else if (method === 'ledger.getDetailedMomentumsByHeight') { const [h, c] = params; const list = []; for (let x = h; x < h + c && x <= FRONT; x++) if (chain.has(x)) list.push(chain.get(x)); result = { list, count: FRONT }; }
@@ -82,12 +83,12 @@ const wss = new WebSocketServer({ noServer: true });
 const bws = new WebSocketServer({ noServer: true });
 srv.on('upgrade', (req, sock, head) => {
   const u = req.url.split('?')[0];
-  if (['/ws','/silent','/stale','/badbounds','/incomplete'].includes(u)) wss.handleUpgrade(req, sock, head, ws => { ws.behavior=u; wss.emit('connection', ws, req); });
+  if (['/ws','/silent','/stale','/badbounds','/incomplete','/slowhistory'].includes(u)) wss.handleUpgrade(req, sock, head, ws => { ws.behavior=u; wss.emit('connection', ws, req); });
   else if (u === '/api/v1/ws') bws.handleUpgrade(req, sock, head, ws => { btcSubs.add(ws); ws.on('close', () => btcSubs.delete(ws)); });
   else sock.destroy();
 });
 wss.on('connection', ws => {
-  ws.on('message', m => { if(ws.behavior==='/silent')return; const d = JSON.parse(m); const r = Array.isArray(d) ? d.map(x => handle(x, ws)) : handle(d, ws); ws.send(JSON.stringify(r)); });
+  ws.on('message', m => { if(ws.behavior==='/silent')return; const d = JSON.parse(m); const r = Array.isArray(d) ? d.map(x => handle(x, ws)).filter(Boolean) : handle(d, ws); if(r)ws.send(JSON.stringify(r)); });
   ws.on('close', () => { for (const s of [...subs]) if (s[0] === ws) subs.delete(s); });
 });
 srv.listen(PORT, '127.0.0.1', () => console.log(`mock znnd + mempool on http://localhost:${PORT}  (html: ${path.relative(process.cwd(), HTML)}${Object.keys(HDR).length ? ', with vercel.json headers' : ''})`));

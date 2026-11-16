@@ -330,7 +330,7 @@ function blockColor(b){const base=(KINDS[b.kind]||KINDS.contract).c;return shade
 /* ---------- state ---------- */
 const S={ms:[],byH:new Map(),bySlot:new Map(),btc:0,missLog:[],statsAt:0,
   genesis:{btc:'000000000000000000004dd040595540d43ce8ff5946eeaa403fb13d0e582d8f',phrases:['We are all Satoshi',"Don't trust. Verify"]}, // go-zenon genesis config; replaced by the chain's own bytes when live
-  frontier:0,lastTs:0,pillars:[],prodName:new Map(),hist:[],hs:null,mode:'connecting',node:'',clockOff:0,offs:[],ready:false};
+  frontier:0,lastTs:0,pillars:[],prodName:new Map(),hist:[],hs:null,historyComplete:false,mode:'connecting',node:'',clockOff:0,offs:[],ready:false};
 const serverNow=()=>Date.now()/1000+S.clockOff;
 function pillarName(addr){return S.prodName.get(addr)||(addr?addr.slice(0,9)+'…'+addr.slice(-4):'?')}
 const isFollow=n=>FOLLOW&&String(n).toLowerCase()===FOLLOW;
@@ -401,7 +401,7 @@ class Node{
   close(){if(this.cancelOpen)this.cancelOpen();this.cancelOpen=null;this.opening=null;this.alive=false;const ws=this.ws;this.ws=null;for(const p of this.pend.values()){clearTimeout(p.t);p.rej(new Error('closed'))}this.pend.clear();try{ws&&ws.close()}catch(e){}}
 }
 const node=new Node(NODES);
-let lastNote=0,catching=false,wantH=0,loadingOlder=false,timersOn=false;
+let lastNote=0,catching=false,wantH=0,loadingOlder=false,loadingHistory=false,timersOn=false;
 
 let connecting=false;
 const freshFrontier=f=>f&&Number.isSafeInteger(f.height)&&f.height>0&&Number.isFinite(f.timestamp)&&Date.now()/1000-f.timestamp<=90&&f.timestamp-Date.now()/1000<=30;
@@ -438,7 +438,7 @@ async function onConnected(){
   const refresh=S.ms.length&&f.height-S.frontier>WINDOW;wantH=f.height;
   if(!S.ms.length||refresh){
     const from=Math.max(1,f.height-999),list=await readRange(from,f.height-from+1,8000);check();
-    if(refresh){S.ms=[];S.byH.clear();S.bySlot.clear();S.frontier=0;S.lastTs=0;S.hist=[];S.hs=null;CH.built=false;GW.last=-1}
+    if(refresh){S.ms=[];S.byH.clear();S.bySlot.clear();S.frontier=0;S.lastTs=0;S.hist=[];S.hs=null;S.historyComplete=false;CH.built=false;GW.last=-1}
     ingest(list,false);
   }else{
     const overlap=await node.call('ledger.getMomentumsByHeight',[S.frontier,1],4000);check();
@@ -447,8 +447,8 @@ async function onConnected(){
   }
   if(!freshFrontier({height:S.frontier,timestamp:S.lastTs})||S.frontier<f.height)throw new Error('incomplete frontier data');
   S.mode='live';S.node=host(node.url);setStatus('live');lastNote=Date.now();markReady();
-  loadPillars();if(!S.hs)loadHistory();loadOlder();loadGenesis();
-  if(!timersOn){timersOn=true;setInterval(()=>{if(S.mode==='live'){loadPillars();if(!S.hs)loadHistory();if(S.ms.length<WINDOW-5)loadOlder()}},60000);setInterval(checkConnection,5000)}
+  loadPillars();if(!S.historyComplete)loadHistory();loadOlder();loadGenesis();
+  if(!timersOn){timersOn=true;setInterval(()=>{if(S.mode==='live'){loadPillars();if(!S.historyComplete)loadHistory();if(S.ms.length<WINDOW-5)loadOlder()}},60000);setInterval(checkConnection,5000)}
 }
 async function checkConnection(){
   if(S.mode!=='live'||!node.alive)return;
@@ -477,14 +477,18 @@ async function loadOlder(){
 async function loadGenesis(){try{const g=(await node.call('ledger.getMomentumsByHeight',[1,1])).list[0];let d=(g&&g.data)||'';try{d=atob(d)}catch(e){}const parts=d.split('#');if(parts.length>=3&&/^[0-9a-f]{64}$/.test(parts[0]))S.genesis={btc:parts[0],phrases:parts.slice(1)}}catch(e){}}
 async function loadPillars(){try{const p=await node.call('embedded.pillar.getAll',[0,500]);if(p&&p.list)setPillars(p.list)}catch(e){}}
 async function loadHistory(){
-  const socket=node.ws;
+  if(loadingHistory)return;loadingHistory=true;const socket=node.ws;
   try{
     const f=S.frontier,N=Math.min(240,f),heights=[...new Set(Array.from({length:N},(_,i)=>Math.max(1,Math.round(1+i*(f-1)/Math.max(1,N-1)))))];
-    const res=[];for(let i=0;i<heights.length;i+=20){res.push(...await node.batch(heights.slice(i,i+20).map(h=>['ledger.getMomentumsByHeight',[h,1]]),8000));if(node.ws!==socket||S.mode!=='live')return;await sleep(20)}
-    if(node.ws!==socket||S.mode!=='live')return;
-    const points=[];res.forEach((r,i)=>{const m=r.status==='fulfilled'&&r.value?.list?.[0];if(m&&m.height===heights[i]&&Number.isSafeInteger(m.timestamp)&&m.timestamp>=GENESIS_TS&&(!points.length||m.timestamp>points.at(-1).ts))points.push({h:m.height,ts:m.timestamp})});
-    if(points.length>=2){S.hist=points;historyTip();bus.emit('history')}
-  }catch(e){console.warn('history unavailable')}
+    const points=[];
+    for(let i=0;i<heights.length;i+=8){
+      const res=await node.batch(heights.slice(i,i+8).map(h=>['ledger.getMomentumsByHeight',[h,1]]),8000);if(node.ws!==socket||S.mode!=='live')return;
+      res.forEach((r,j)=>{const m=r.status==='fulfilled'&&r.value?.list?.[0];if(m&&m.height===heights[i+j]&&Number.isSafeInteger(m.timestamp)&&m.timestamp>=GENESIS_TS&&(!points.length||m.timestamp>points.at(-1).ts))points.push({h:m.height,ts:m.timestamp})});
+      if(points.length>=2){const sample=[...points],last=S.ms.at(-1);if(last&&last.h>sample.at(-1).h){const tip={h:last.h,ts:last.ts};if(sample.length<N)sample.push(tip);else sample[sample.length-1]=tip}if(!S.hs||sample.length>=S.hist.length){S.hist=sample;bus.emit('history')}}
+      await sleep(20);
+    }
+    S.historyComplete=points.length===heights.length;
+  }catch(e){console.warn('history unavailable')}finally{loadingHistory=false}
 }
 function historyTip(){const last=S.ms.at(-1),sample=S.hist.at(-1);if(last&&sample&&last.h>sample.h){S.hist[S.hist.length-1]={h:last.h,ts:last.ts};bus.emit('history')}}
 
@@ -522,7 +526,7 @@ function startSim(){
   S.clockOff=0;ingest(list,false);
   const pts=[],NN=240,f=h;let t=GENESIS_TS;for(let i=0;i<NN;i++){const hh=Math.round(1+i*(f-1)/(NN-1));if(i){const dh=hh-pts[i-1].h;t+=dh*(10.18+.3*Math.sin(i/37)+.22*Math.random()+(Math.random()<.02?1.2:0))}pts.push({h:hh,ts:Math.round(t)})}
   const sc=(now-GENESIS_TS)/(pts[NN-1].ts-GENESIS_TS);pts.forEach(p=>p.ts=Math.round(GENESIS_TS+(p.ts-GENESIS_TS)*sc));
-  S.hist=pts;bus.emit('history');markReady();btcSim();
+  S.hist=pts;S.historyComplete=true;bus.emit('history');markReady();btcSim();
   const loop=()=>{const t=Date.now()/1000,next=Math.floor(t/TICK)*TICK+TICK;
     setTimeout(()=>{if(Math.random()>.06){ingest([simDm(S.frontier+1,next)],true)}loop()},(next-t)*1000+250)};loop();
 }
@@ -912,7 +916,7 @@ function updEpoch(force){
    ============================================================ */
 const HI={id:'history',el:$('#s-history'),dur:16000,cv:$('#hist'),hudTs:0,hudH:0};
 HI.ready=()=>!!S.hs;
-HI.caption=()=>`Sampled history · ${S.hist.length} points · smoothed intervals and cumulative missed share`;
+HI.caption=()=>`Sampled history · ${S.hist.length} points${S.historyComplete?'':' · partial'} · smoothed intervals and cumulative missed share`;
 bus.on('history',()=>{
   const H=S.hist,t=[],iv=[],miss=[],hh=[];
   for(let i=1;i<H.length;i++){const a=H[i-1],b=H[i],dh=b.h-a.h;if(dh<=0)continue;t.push(b.ts);hh.push(b.h);iv.push((b.ts-a.ts)/dh);miss.push(Math.max(0,(1-b.h/((b.ts-GENESIS_TS)/TICK+1))*100))}
@@ -1410,7 +1414,7 @@ LM.frame=function(el,dt,t){
    ============================================================ */
 const SP={id:'spiral',el:$('#s-spiral'),dur:16000,cv:$('#spi')};
 SP.ready=()=>!!S.hs;
-SP.caption=()=>'Event horizon · one turn = 90 days · color follows missed share between sampled heights';
+SP.caption=()=>`Event horizon · one turn = 90 days · missed share between ${S.hist.length} sampled heights${S.historyComplete?'':' · partial'}`;
 SP.frame=function(el,dt,t){
   const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);const D=S.hs;if(!D)return;
   const T=90*86400,n=D.t.length,tEnd=D.t[n-1],cx=w/2,cy=h*.54,m=Math.min(w,h),r0=m*.06,rMax=m*.355,turns=(tEnd-GENESIS_TS)/T,k=(rMax-r0)/(turns*2*Math.PI);
