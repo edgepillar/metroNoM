@@ -90,10 +90,10 @@ async function fixtures(){
  });
  for(const r of results)check(r.ok,r.name,r.detail||'');
  await page.close();
- const unavailable=await browser.newPage();await unavailable.route('**/api/**',r=>r.abort());
- await unavailable.goto(local+'?node='+encodeURIComponent('ws://localhost:8857/ws')+'&btcapi='+encodeURIComponent(local.slice(0,-1))+'#clocks');
- let selected=true;try{await unavailable.waitForFunction(()=>SC.cur>=0&&SC.list[SC.cur].id==='clocks',{},{timeout:20000});}catch{selected=false}
- check(selected&&await unavailable.locator('#availability').isVisible().catch(()=>false),'an unavailable Bitcoin scene shows an explanation instead of holding the intro forever');await unavailable.close();
+ const unavailable=await browser.newPage();
+ await unavailable.goto(local+'?node='+encodeURIComponent('ws://localhost:8857/ws')+'&btcapi='+encodeURIComponent(local+'offline-bitcoin')+'#clocks');
+ let selected=true;try{await unavailable.waitForFunction(()=>SC.cur>=0&&SC.list[SC.cur].id==='clocks'&&!document.querySelector('#availability').hidden,{},{timeout:20000});}catch{selected=false}
+ check(selected,'an unavailable Bitcoin scene shows an explanation instead of holding the intro forever',selected?'':JSON.stringify(await unavailable.evaluate(()=>({scene:SC.list[SC.cur]?.id,noticeHidden:document.querySelector('#availability').hidden,bitcoin:BT.blocks.length,mode:S.mode}))));await unavailable.close();
  const partial=await browser.newPage();await partial.goto(local+'?node='+encodeURIComponent('ws://localhost:8857/incomplete,ws://localhost:8857/ws')+'&btcapi='+encodeURIComponent(local.slice(0,-1)));
  let complete=true;try{await partial.waitForFunction(()=>S.ready&&node.url.endsWith('/ws'),{},{timeout:11000});}catch{complete=false}
  check(complete,'incomplete node data fails over to a complete source');await partial.close();
@@ -125,7 +125,7 @@ async function mobile(base){
   for(const id of scenes){await page.evaluate(id=>{location.hash=id},id);await page.waitForFunction(id=>SC.cur>=0&&SC.list[SC.cur].id===id,id,{timeout:10000});
    await page.waitForTimeout(id==='blocks'?3200:1700);
    const overflow=await page.evaluate(()=>{const s=SC.list[SC.cur];s.t0=performance.now()-12000;BX.t=0;window.__overflow=[];window.__capture=true;try{s.frame?.(12,.01,performance.now(),false)}finally{window.__capture=false}return [...new Set(window.__overflow)]});
-   const dom=await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&document.documentElement.scrollHeight<=innerHeight);
+   const dom=await page.evaluate(()=>{if(document.documentElement.scrollWidth>innerWidth||document.documentElement.scrollHeight>innerHeight)return false;if(SC.list[SC.cur].id==='blocks'){const r=document.querySelector('.mwrap').getBoundingClientRect();return r.top>=document.querySelector('#hud').getBoundingClientRect().bottom+8&&r.bottom<=innerHeight+1}return true});
    await page.screenshot({path:path.join(shots,`${width}x${height}_${id}.png`)});check(overflow.length===0&&dom,`${width}x${height} ${id} canvas labels and page bounds fit`,[...overflow.slice(0,3),...(!dom?['document overflow']:[])].join(' | '));
   }
  }

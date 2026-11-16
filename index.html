@@ -699,9 +699,12 @@ BL.exit=hideTip;
 $('#mosaic').addEventListener('mousemove',e=>BL.hover(e.clientX,e.clientY));
 $('#mosaic').addEventListener('mouseleave',hideTip);
 $('#mosaic').addEventListener('touchstart',e=>{const p=e.touches[0];if(p)BL.hover(p.clientX,p.clientY)},{passive:true});
-BL.sizes=function(){const W=innerWidth,H=innerHeight,por=W<H;
-  const ms=por?Math.min(W*.86,H*.4):Math.min(H*.68,W*.42);
-  document.documentElement.style.setProperty('--ms',Math.round(ms)+'px');document.documentElement.style.setProperty('--mg',por?'3vh':'4vw')};
+BL.sizes=function(){const stage=$('#stage'),W=stage.clientWidth,H=stage.clientHeight,por=W<H,wrap=this.el.querySelector('.mwrap'),top=OVERLAY?H*.04:contentTop(H,.12),bottom=H*.97,room=bottom-top;
+  let ms=por?Math.min(W*.86,H*.4):Math.min(H*.68,W*.42);
+  const size=()=>document.documentElement.style.setProperty('--ms',Math.round(ms)+'px');size();document.documentElement.style.setProperty('--mg',por?'3vh':'4vw');
+  for(let i=0;i<5&&wrap.offsetHeight>room;i++){ms=Math.max(80,ms-(wrap.offsetHeight-room)/(por?1.82:1)-2);size()}
+  wrap.style.top=((top+bottom)/2)+'px';this.hudEdge=$('#hud').getBoundingClientRect().bottom;
+};
 BL.layout=function(drop){
   const all=[];for(const r of S.ms)for(const b of r.blocks)all.push(b);
   const list=all.slice(-1600);let area=0;for(const b of list)area+=b.s*b.s;
@@ -732,11 +735,13 @@ BL.layout=function(drop){
   for(const k of[...this.sq.keys()])if(!keep.has(k))this.sq.delete(k);
   const ks=Object.entries(kc).sort((a,b)=>b[1]-a[1]);
   $('#legend').innerHTML=ks.map(([k,n])=>`<span><i style="background:${(KINDS[k]||KINDS.contract).c}"></i>${esc((KINDS[k]||KINDS.contract).label)} <b>${n}</b></span>`).join('');
+  this.sizes();
 };
 BL.onLive=function(list){for(const r of list)for(const b of r.blocks)this.fresh.add(b.hash);while(this.fresh.size>1600)this.fresh.delete(this.fresh.values().next().value);this.dirty=true};
 BL.enter=function(){this.sizes();this.enterT=performance.now();this.layout(true);this.dirty=false};
 BL.frame=function(el,dt,t){
   if(this.dirty){this.layout(false);this.dirty=false}
+  if(this.hudEdge!==$('#hud').getBoundingClientRect().bottom)this.sizes();
   const{ctx,w,h}=fit(this.cv);ctx.clearRect(0,0,w,h);
   const G=this.G,cell=w/G,gap=Math.max(.5,cell*.09),k=1-Math.exp(-dt*5.2);
   ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.strokeRect(.5,.5,w-1,h-1);
