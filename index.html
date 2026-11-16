@@ -483,7 +483,7 @@ async function loadHistory(){
     const points=[];
     for(let i=0;i<heights.length;i+=8){
       const res=await node.batch(heights.slice(i,i+8).map(h=>['ledger.getMomentumsByHeight',[h,1]]),8000);if(node.ws!==socket||S.mode!=='live')return;
-      res.forEach((r,j)=>{const m=r.status==='fulfilled'&&r.value?.list?.[0];if(m&&m.height===heights[i+j]&&Number.isSafeInteger(m.timestamp)&&m.timestamp>=GENESIS_TS&&(!points.length||m.timestamp>points.at(-1).ts))points.push({h:m.height,ts:m.timestamp})});
+      res.forEach((r,j)=>{const m=r.status==='fulfilled'&&r.value?.list?.[0];if(m&&m.height===heights[i+j]&&Number.isSafeInteger(m.timestamp)&&m.timestamp>=GENESIS_TS&&m.timestamp<=S.lastTs&&(!points.length||m.timestamp>points.at(-1).ts))points.push({h:m.height,ts:m.timestamp})});
       if(points.length>=2){const sample=[...points],last=S.ms.at(-1);if(last&&last.h>sample.at(-1).h){const tip={h:last.h,ts:last.ts};if(sample.length<N)sample.push(tip);else sample[sample.length-1]=tip}if(!S.hs||sample.length>=S.hist.length){S.hist=sample;bus.emit('history')}}
       await sleep(20);
     }
@@ -1423,7 +1423,7 @@ SP.frame=function(el,dt,t){
   const pu=.5+.5*Math.sin(t/300);ctx.fillStyle='#f7931a';ctx.beginPath();ctx.arc(cx,cy,5+pu*2,0,7);ctx.fill();ctx.strokeStyle=hexA('#f7931a',.3);ctx.beginPath();ctx.arc(cx,cy,14+pu*6,0,7);ctx.stroke();
   ctx.lineCap='round';
   for(let i=0;i<n;i++){const ta=i?D.t[i-1]:GENESIS_TS,tb=D.t[i];if(ta>tp)break;const te=Math.min(tb,tp),mf=clamp(1-TICK/D.raw[i],0,1);
-    ctx.strokeStyle=missColor(mf);ctx.lineWidth=2.4+(i/n)*2.2;ctx.beginPath();const steps=8;for(let s=0;s<=steps;s++){const[x,y]=P(lerp(ta,te,s/steps));s?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke()}
+    ctx.strokeStyle=missColor(mf);ctx.lineWidth=2.4+(i/n)*2.2;ctx.beginPath();const steps=Math.max(8,Math.min(2048,Math.ceil((te-ta)/T*64)));for(let s=0;s<=steps;s++){const[x,y]=P(lerp(ta,te,s/steps));s?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke()}
   ctx.lineCap='butt';
   for(let y=2022;y<=new Date(tEnd*1000).getUTCFullYear();y++){const ts=Date.UTC(y,0,1)/1000;if(ts>tp)break;const[x,yy]=P(ts),dx=x-cx,dy=yy-cy,dl=Math.hypot(dx,dy)||1;
     const lx=x+dx/dl*16,ly=yy+dy/dl*16;ctx.fillStyle='rgba(0,0,0,.82)';ctx.fillRect(lx-17,ly-8,34,16);
