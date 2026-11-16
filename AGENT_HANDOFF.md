@@ -5,7 +5,8 @@ metroNoM is a browser visualization of public Zenon RPC observations and Bitcoin
 ## Repository and hosting
 
 - Repository: `edgepillar/metroNoM`, branch `main`.
-- Hosting: Vercel with GitHub integration, framework **Other**.
+- Hosting: Vercel project `metronom`, with GitHub integration and framework **Other**.
+- Production: https://metronom-gamma.vercel.app/
 - Install command: empty. Build command: `node scripts/build.mjs`.
 - Output directory: `public`. The build verifies the inline script CSP hash and copies only `index.html`.
 - No application environment variables, backend or production dependencies are required.
@@ -31,7 +32,7 @@ After editing the application script, update its SHA-256 source in the `Content-
 
 ```sh
 cd test
-npm run smoke:prod -- https://metronom.vercel.app
+npm run smoke:prod -- https://metronom-gamma.vercel.app
 ```
 
 Verify the actual production URL, exact response bytes and CSP, fresh LIVE status, Bitcoin data, pillar list and history. Test all scene links and `?overlay&calm#dial`. Repository documentation, tests, configuration, environment files and Git metadata must return 404 from the deployment.

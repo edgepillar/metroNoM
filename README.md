@@ -5,7 +5,7 @@
 A live, cinematic view of the Zenon Network of Momentum, streamed straight from public nodes into the browser.
 In the spirit of mononaut's "tick tock, next block" for Bitcoin.
 
-**Live:** LIVE_URL
+**Live:** https://metronom-gamma.vercel.app
 
 One static HTML file. No backend, no application dependencies, no analytics. The page talks to public `znnd` nodes over
 WebSocket JSON-RPC and to mempool.space for Bitcoin. If no node is reachable it says so and plays a clearly
@@ -50,7 +50,7 @@ Keys: `1`–`9` scenes · `←`/`→` step · `0` auto · `Space` pause · `N` t
 
 **Time notary** (`N`, or click a block in the mosaic): paste an account block hash or a `z1…` address. The selected public node reports the momentum it acknowledged and the momentum that confirmed it. Bitcoin timestamps provide context. The copied JSON is an observation, not an independently verified inclusion, finality or timestamp proof. The lookup is sent to the selected node.
 
-**OBS:** add a Browser Source with `LIVE_URL/?overlay&calm#dial` (or no hash to cycle), 1920×1080,
+**OBS:** add a Browser Source with `https://metronom-gamma.vercel.app/?overlay&calm#dial` (or no hash to cycle), 1920×1080,
 transparent background is automatic.
 
 ## Run locally
@@ -63,7 +63,7 @@ Tests (mock node, locked-down embed, Playwright smoke test) live in `test/`:
 cd test && npm ci --ignore-scripts && npx playwright install chromium
 npm run regression                 # failure and recovery controls
 npm run smoke                      # local mock fixtures
-npm run smoke:prod -- LIVE_URL     # against a deployment
+npm run smoke:prod -- https://metronom-gamma.vercel.app     # against a deployment
 ```
 
 See `docs/DATA-MODEL.md` for the RPC calls and the time model, and `docs/ARCHITECTURE.md` for the code map.

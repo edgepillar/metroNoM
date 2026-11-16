@@ -60,7 +60,13 @@ The reviewed `index.html` SHA-256 is `cb444e6ff41ef7801f695c743574334095b51e1559
 | Sandboxed fallback | Labelled simulation ready in 1.1 seconds |
 | Live source probe | All three Zenon endpoints answered, v0.0.10, 98 pillars; mempool.space answered |
 | Staged privacy and language scan | 16 source files passed before publication |
-| Production | Pending deployment verification |
+| Production smoke controls | 21/21 passed against the public deployment, actual exit 0 |
+
+Production is [metronom-gamma.vercel.app](https://metronom-gamma.vercel.app/), hosted as Vercel project `metronom` in the `edgepillar` account and connected to `edgepillar/metroNoM` on `main`. Vercel requires lowercase project identifiers; the repository and application retain the `metroNoM` spelling. The platform assigned the production hostname shown here.
+
+The production browser run reached LIVE through `node.zenonhub.io`, initially at momentum #14,676,227 with a three-second frontier age. Bitcoin height #976,137, 98 pillars and history since genesis loaded. All fifteen scene pins and `?overlay#dial` worked. The page had zero browser page errors and zero CSP violations. The eight checked non-public paths returned 404, including documentation, tests, build configuration, Git metadata and environment-file paths. The exact deployed HTML bytes and CSP matched the reviewed source.
+
+The production browser run used source commit `ac9d5f3f5619ae5ccdeafe6ac5228e7196f49f13` and the HTML SHA-256 above. Final documentation updates preserve these application bytes. Vercel's hosted static build succeeded; automated browser checks ran locally against the public production URL.
 
 Mobile epoch, pillar and history screenshots were inspected after the layout corrections. The automated scene sweep checks navigation and execution; visual inspection also checked that the corrected headings and legends fit. Failed attempts remain in private qualification evidence with their original exit status; a later passing attempt does not rewrite them.
 

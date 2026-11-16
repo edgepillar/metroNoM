@@ -4,7 +4,7 @@ One self-contained file (~140 KB): CSS, markup and one classic `<script>` with n
 and no external JavaScript. Rendering is Canvas 2D, except the momentum chain scene, which is DOM elements with
 CSS 3D transforms. Sound is generated with WebAudio (off until the user turns it on).
 
-Line numbers below refer to the file as delivered (sha256 in `AGENT_HANDOFF.md`). They shift after edits; the
+Line numbers below refer to the file as delivered (original SHA-256 in `docs/REVIEW.md`). They shift after edits; the
 section banners (`/* ====…  scene: … */`) are the stable anchors.
 
 ## File layout
