@@ -12,7 +12,10 @@
     "probe": "node probe-nodes.mjs",
     "smoke": "node smoke.mjs",
     "smoke:prod": "node smoke.mjs --url",
-    "regression": "node smoke.mjs --regression"
+    "regression": "node smoke.mjs --regression",
+    "data": "node recheck.mjs",
+    "responsive": "node recheck.mjs --mobile",
+    "live": "node recheck.mjs --live"
   },
   "devDependencies": {
     "playwright": "1.65.1",

@@ -123,9 +123,10 @@ async function mobile(base){
  for(const [width,height]of [[320,568],[390,844],[844,390],[768,1024]]){
   await page.setViewportSize({width,height});await page.waitForTimeout(300);
   for(const id of scenes){await page.evaluate(id=>{location.hash=id},id);await page.waitForFunction(id=>SC.cur>=0&&SC.list[SC.cur].id===id,id,{timeout:10000});
-   await page.waitForTimeout(200);
+   await page.waitForTimeout(id==='blocks'?3200:1700);
    const overflow=await page.evaluate(()=>{const s=SC.list[SC.cur];s.t0=performance.now()-12000;BX.t=0;window.__overflow=[];window.__capture=true;try{s.frame?.(12,.01,performance.now(),false)}finally{window.__capture=false}return [...new Set(window.__overflow)]});
-   await page.screenshot({path:path.join(shots,`${width}x${height}_${id}.png`)});check(overflow.length===0,`${width}x${height} ${id} canvas labels fit`,overflow.slice(0,3).join(' | '));
+   const dom=await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&document.documentElement.scrollHeight<=innerHeight);
+   await page.screenshot({path:path.join(shots,`${width}x${height}_${id}.png`)});check(overflow.length===0&&dom,`${width}x${height} ${id} canvas labels and page bounds fit`,[...overflow.slice(0,3),...(!dom?['document overflow']:[])].join(' | '));
   }
  }
  check(errors.length===0,'responsive audit has no browser errors',errors.join(' | '));await page.close();

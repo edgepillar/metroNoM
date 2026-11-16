@@ -220,7 +220,7 @@ html.overlay #ticker{display:flex;position:fixed;left:2vw;right:2vw;bottom:2.5vh
   <section class="scene" id="s-outro"><div class="wm"><div class="wm1">network of momentum</div><div class="wm2">zenon · live from public nodes</div></div><canvas id="fx2" class="full"></canvas></section>
   <canvas id="bfx" class="full"></canvas>
   <div id="availability" role="status" aria-live="polite" hidden></div>
-  <div id="epoch">
+  <div id="epoch" aria-hidden="true">
     <div class="bar"><div class="f1" id="eF1"></div><div class="f2" id="eF2"></div></div>
     <div class="stats">
       <div><b id="eAvg">—</b><span>Average momentum time · this epoch</span></div>
@@ -676,15 +676,15 @@ BL.keep=()=>!!BL.hl; // keep the scene while someone is reading a block card
 const hms=ts=>{const d=new Date(ts*1000);return pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds())};
 const BTYPE={1:'genesis',2:'user send',3:'user receive',4:'contract send',5:'contract receive'};
 const addrLabel=a=>{const e=embName(a);return e?`${(KINDS[e]||KINDS.contract).label} contract`:(a?a.slice(0,8)+'…'+a.slice(-4):'—')};
-function tipHtml(b){ // every account block sits between the momentum it acknowledged and the momentum that sealed it
+function tipHtml(b){ // node-reported acknowledgement and confirmation references
   const K=KINDS[b.kind]||KINDS.contract,ack=b.ackH?S.byH.get(b.ackH):null,lag=b.ackH?b.mh-b.ackH:null;
   return`<div><i class="k" style="background:${K.c}"></i><b>${esc(K.label)}</b> <span class="dim">· ${BTYPE[b.type]||'block'}</span></div>`+
     `<div class="dim">${esc(addrLabel(b.from))} → ${esc(addrLabel(b.to))}</div>`+
     `<div>${b.amt?`${fmtAmt(b.amt)} ${esc(b.sym||'')}`:'no value moved'} · ${fmtK(b.plasma)} plasma</div>`+
-    `<div class="br">signed after <b>#${b.ackH?fmtInt(b.ackH):'—'}</b>${ack?` <span class="dim">${hms(ack.ts)}</span>`:''}</div>`+
-    `<div>sealed in <b>#${fmtInt(b.mh)}</b> <span class="dim">${hms(b.mts)} UTC</span></div>`+
+    `<div class="br">acknowledges <b>#${b.ackH?fmtInt(b.ackH):'—'}</b>${ack?` <span class="dim">${hms(ack.ts)}</span>`:''}</div>`+
+    `<div>node reports confirmation in <b>#${fmtInt(b.mh)}</b> <span class="dim">${hms(b.mts)} UTC</span></div>`+
     (lag!=null?`<div class="dim">time bracket: ${lag} momentum${lag===1?'':'s'}${ack?` · ${b.mts-ack.ts} s`:''}</div>`:'')+
-    (S.mode==='live'?'<div class="dim" style="margin-top:4px;color:#4f7dff">click for a time certificate</div>':'');
+    (S.mode==='live'?'<div class="dim" style="margin-top:4px;color:#4f7dff">tap for node-reported time context</div>':'');
 }
 const TIP=$('#tip');function hideTip(){TIP.classList.remove('show');BL.hl=null}
 BL.hover=function(cx,cy){
@@ -1132,12 +1132,12 @@ BC.frame=function(el,dt,t){
         iv.push({xa,xb,txt:ctx.measureText(full).width<wpx?full:ctx.measureText(mid).width<wpx?mid:ctx.measureText(dur(d)).width<wpx?dur(d):'',warn:st.miss>0})}}
     prev=b}
   // the open interval: last block → now
-  {const xa=Math.min(X(lastB.ts),xNow),st=slotStats(lastB.ts,now+.001);iv.push({xa,xb:xNow,txt:`${dur(now-lastB.ts)} and counting · ${st.mo}/${st.n}${st.unknown||st.pending?' partial':''}`,open:true})}
+  {const xa=Math.min(X(lastB.ts),xNow),st=slotStats(lastB.ts,now+.001);iv.push({xa,xb:xNow,txt:lastB.ts>now?'miner timestamp ahead':`${dur(now-lastB.ts)} ${narrow?'open':'and counting'} · ${st.mo}/${st.n}${st.unknown||st.pending?' partial':''}`,open:true})}
   let lblR=-1e9;
   for(const v of iv){
     if(!v.pt&&v.xb-v.xa>=6){ctx.strokeStyle=v.open?'rgba(111,243,77,.6)':'#363c5e';ctx.lineWidth=1;if(v.open)ctx.setLineDash([3,3]);
       ctx.beginPath();ctx.moveTo(v.xa+2,yI-5);ctx.lineTo(v.xa+2,yI);ctx.lineTo(v.xb-2,yI);ctx.lineTo(v.xb-2,yI-5);ctx.stroke();ctx.setLineDash([])}
-    if(!v.txt)continue;const tw=ctx.measureText(v.txt).width,cxl=(v.xa+v.xb)/2,row=cxl-tw/2<lblR+8?1:0;if(row&&v.pt===undefined&&!v.open&&!v.warn)continue;
+    if(!v.txt)continue;const tw=ctx.measureText(v.txt).width,cxl=clamp((v.xa+v.xb)/2,tw/2+8,w-tw/2-8),row=cxl-tw/2<lblR+8?1:0;if(row&&v.pt===undefined&&!v.open&&!v.warn)continue;
     ctx.fillStyle=v.open?'#9ff38a':v.warn?'#ffb07a':'#8a90a8';ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText(v.txt,cxl,yI+5+row*15);if(!row)lblR=cxl+tw/2}
   // cubes on top, nudged up a level when they would overlap
   const lvlRight=[-1e9,-1e9,-1e9];
@@ -1270,9 +1270,9 @@ GL.frame=function(el,dt,t){
       ctx.fillStyle=isFollow(pillarName(ss.m.producer))?'#6ff34d':'#8a90a8';ctx.font=`500 ${clamp(tile*.085,9,12)}px Arial`;ctx.textAlign='left';ctx.textBaseline='top';
       ctx.fillText('#'+fmtInt(ss.m.h),x,y+tile+4,tile);ctx.textAlign='right';ctx.fillStyle='#565c77';const nm=pillarName(ss.m.producer);if(tile>130)ctx.fillText(nm.length>12?nm.slice(0,11)+'…':nm,x+tile,y+tile+4)}
     else if(ss.st==='missed'){ctx.strokeStyle='#8a2626';ctx.lineWidth=2;ctx.strokeRect(x+1,y+1,tile-2,tile-2);ctx.beginPath();ctx.moveTo(x+tile*.3,y+tile*.3);ctx.lineTo(x+tile*.7,y+tile*.7);ctx.moveTo(x+tile*.7,y+tile*.3);ctx.lineTo(x+tile*.3,y+tile*.7);ctx.stroke();ctx.lineWidth=1;
-      ctx.fillStyle='#ff6b4a';ctx.font=`500 ${clamp(tile*.085,9,12)}px Arial`;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText('missed slot',x,y+tile+4)}
+      ctx.fillStyle='#ff6b4a';ctx.font=`500 ${clamp(tile*.085,9,12)}px Arial`;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(tile<65?'missed':'missed slot',x,y+tile+4,tile)}
     else if(ss.st==='wait'||ss.st==='pending'){ctx.strokeStyle=`rgba(111,243,77,${(.5+.4*Math.sin(t/120)).toFixed(3)})`;ctx.lineWidth=2;ctx.strokeRect(x+1,y+1,tile-2,tile-2);ctx.lineWidth=1;
-      ctx.fillStyle='#6ff34d';ctx.font=`500 ${clamp(tile*.085,9,12)}px Arial`;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText('pending',x,y+tile+4)}
+      ctx.fillStyle='#6ff34d';ctx.font=`500 ${clamp(tile*.085,9,12)}px Arial`;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText('pending',x,y+tile+4,tile)}
     else{ctx.strokeStyle='#1b2142';ctx.strokeRect(x+.5,y+.5,tile-1,tile-1)}
   }
   ctx.globalAlpha=1;
@@ -1306,10 +1306,18 @@ CO.frame=function(el,dt,t){
       else if(ss.st==='missed'&&prev&&rd===round){ctx.globalAlpha=intro*.9;ctx.fillStyle='#ff6b4a';ctx.font='600 11px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('×',prev.x+10,prev.y-10);prev=null}
       else if(ss.st==='missed')prev=null}}
   ctx.lineWidth=1;
+  const labels=[];
   for(const{q,slot,m}of lit){const isCur=slot===cur||slot===cur-1&&!S.bySlot.has(cur),ft=DI.flash.get(slot),fk=ft?Math.max(0,1-(t-ft)/1600):0;
     ctx.globalAlpha=intro;ctx.fillStyle=m.n?domColor(m):'#ffffff';ctx.beginPath();ctx.arc(q.x,q.y,q.s+1.5+fk*6,0,7);ctx.fill();
     if(fk>0){ctx.strokeStyle=`rgba(255,255,255,${fk.toFixed(3)})`;ctx.beginPath();ctx.arc(q.x,q.y,q.s+6+(1-fk)*22,0,7);ctx.stroke()}
-    const nm=pillarName(m.producer);ctx.fillStyle=isFollow(nm)?'#6ff34d':isCur?'#fff':'#8f95b2';ctx.font=`500 ${isCur?12:10}px Arial`;ctx.textAlign=q.x>w/2?'right':'left';ctx.textBaseline='middle';ctx.fillText(nm.length>16?nm.slice(0,15)+'…':nm,q.x+(q.x>w/2?-q.s-6:q.s+6),q.y)}
+    const nm=pillarName(m.producer);labels.push({q,nm,isCur,follow:isFollow(nm)})}
+  const placed=[],seen=new Set();
+  for(const{q,nm,isCur,follow}of labels.sort((a,b)=>Number(b.isCur||b.follow)-Number(a.isCur||a.follow))){
+    if(seen.has(q.p.producerAddress))continue;seen.add(q.p.producerAddress);
+    ctx.font=`500 ${isCur?12:10}px Arial`;const label=nm.length>16?nm.slice(0,15)+'…':nm,tw=ctx.measureText(label).width,x=clamp(q.x+(q.x>w/2?-q.s-6-tw/2:q.s+6+tw/2),tw/2+8,w-tw/2-8),box={l:x-tw/2-3,r:x+tw/2+3,t:q.y-9,b:q.y+9};
+    if(placed.some(p=>box.l<p.r&&box.r>p.l&&box.t<p.b&&box.b>p.t))continue;placed.push(box);
+    ctx.fillStyle=follow?'#6ff34d':isCur?'#fff':'#8f95b2';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,x,q.y)
+  }
   ctx.globalAlpha=intro;ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillStyle='#6b7190';ctx.font='500 12px Arial';
   if(w<700){ctx.font='500 11px Arial';ctx.fillText(`ROUND ${fmtInt(round)}  ·  SLOT ${pos+1} / ${ROUND}  ·  ${prod} produced  ·  ${miss} missed`,w/2,h*.93);ctx.fillStyle='#4f5672';ctx.fillText('faint figures: the two rounds before',w/2,h*.93+17)}
   else ctx.fillText(`ROUND ${fmtInt(round)}  ·  SLOT ${pos+1} / ${ROUND}  ·  ${prod} produced  ·  ${miss} missed  ·  faint figures: the two rounds before`,w/2,h*.95);
@@ -1472,7 +1480,7 @@ LL.frame=function(el,dt,t){
   const now=serverNow(),pt=(now-GENESIS_TS)/TICK,cur=Math.floor(pt),frac=pt-cur,first=firstSlot(),cw=aw/18,yS=narrow?ay+hf+22:h*.42,sh=narrow?h*.045:h*.09;
   for(let i=0;i<18;i++){const slot=cur-17+i,ss=slotState(slot,cur,frac,first),x=ax+i*cw;ctx.fillStyle=ss.st==='blocks'?domColor(ss.m):ss.st==='ok'?'#4b44e4':ss.st==='missed'?'#9a2b2b':ss.st==='wait'?'#6ff34d':'#141831';ctx.fillRect(x,yS,cw-3,sh)}
   const nx=ax+(17+frac)*cw;ctx.fillStyle='#fff';ctx.fillRect(nx,yS-10,2,sh+20);
-  ctx.fillStyle='#8a90a8';ctx.font=`500 ${narrow?11:12}px Arial`;['a momentum every 10 s, when the clock says so','the slot is read from each node\'s system clock','no work inside: the timestamp is a signed claim'].forEach((l,i)=>ctx.fillText(l,ax,yS+sh+(narrow?24:34)+i*(narrow?16:20)));
+  ctx.fillStyle='#8a90a8';ctx.font=`500 ${narrow?11:12}px Arial`;['a scheduled slot opens every 10 seconds','production can be delayed or missed','shown from node-reported timestamps'].forEach((l,i)=>ctx.fillText(l,ax,yS+sh+(narrow?24:34)+i*(narrow?16:20)));
   const rx=narrow?ax:mid+w*.04,rw=narrow?aw:w*.94-rx,ry=narrow?Math.max(h*.41,ay+hf+120):ay;ctx.fillStyle='#ffb341';ctx.font='600 12px Arial';ctx.fillText('ILLUSTRATIVE MODEL · SIMULATION',rx,ry);
   ctx.fillStyle='#fff';ctx.font=`700 ${hf}px Arial`;ctx.fillText(`epoch #${s.ep} paced by proof of work`,rx,ry+hf+6);
   const el2=s.tim-s.es,bh=narrow?11:Math.min(16,h*.022),gap=narrow?5:5,by=narrow?ry+hf+20:h*.3,lw=narrow?84:110,tail=narrow?22:55,bw=rw-lw-tail;ctx.font='500 10px Arial';
@@ -1522,7 +1530,7 @@ async function ntRun(q){
       row('Block',`<b>${esc(ab.hash.slice(0,10))}…${esc(ab.hash.slice(-6))}</b> · ${esc(cert.type)} · account height ${fmtInt(ab.height)}`)+
       row('Account',`${esc(addrLabel(ab.address))} → ${esc(addrLabel(ab.toAddress))}${c.amt?` · ${fmtAmt(c.amt)} ${esc(c.sym||'')}`:''}`)+
       row('Not before',ack?`<b>#${fmtInt(ack.height)}</b> ${utc(cert.notBefore.utc)} <i>the momentum it acknowledged</i>`:'—')+
-      row('Not after',cd?`<b>#${fmtInt(cd.momentumHeight)}</b> ${utc(cert.notAfter.utc)} <i>the momentum that sealed it · ${fmtInt(cd.numConfirmations)} confirmations</i>`:'<b>not confirmed yet</b>')+
+      row('Not after',cd?`<b>#${fmtInt(cd.momentumHeight)}</b> ${utc(cert.notAfter.utc)} <i>node-reported confirming momentum · ${fmtInt(cd.numConfirmations)} confirmations</i>`:'<b>not confirmed yet</b>')+
       (cert.windowSeconds!=null?`<div class="row big"><span>Window</span><div><b>${dur(cert.windowSeconds)}</b> · ${cert.windowMomentums} momentum${cert.windowMomentums===1?'':'s'}</div></div>`:'')+
       row('Bitcoin',ba||bb?`timestamp lookup <b>#${ba?fmtInt(ba.height):'?'}</b> → <b>#${bb?fmtInt(bb.height):'?'}</b> <i>${esc(host(BTC_API))}, by miner-reported timestamp</i>`:'<i>unavailable</i>')+
       row('Anchor',`Zenon genesis commits to Bitcoin #${fmtInt(BTC_ANCHOR)} <i>${esc(S.genesis.btc.slice(0,12))}…</i>`)+
@@ -1608,7 +1616,7 @@ function frame(t){
 }
 
 /* ---------- nav / keys / hash ---------- */
-const NAVL={glyphs:'Glyphs',constellation:'Stars',waterfall:'Waterfall',loom:'Loom',heat:'Heat',lostlink:'2020 WP',spiral:'Spiral',blocks:'Blocks',chain:'Chain',dial:'Clock',clocks:'BTC × ZNN',timeline:'24 h',epoch:'Epoch',history:'History',pillars:'Pillars'};
+const NAVL={glyphs:'Glyphs',constellation:'Stars',waterfall:'Waterfall',loom:'Loom',heat:'Heat',lostlink:'PoW model',spiral:'Spiral',blocks:'Blocks',chain:'Chain',dial:'Clock',clocks:'BTC × ZNN',timeline:'24 h',epoch:'Epoch',history:'History',pillars:'Pillars'};
 function updNav(){
   const s=SC.list[SC.cur];
   $('#nav').innerHTML=PINNABLE.map(id=>`<button data-id="${id}" class="${s&&s.id===id?'cur':''}">${NAVL[id]}</button>`).join('')+

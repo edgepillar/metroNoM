@@ -95,7 +95,7 @@ async function local() {
   await page.fill('#ntI', hash || ''); await page.keyboard.press('Enter');
   const cert = await waitFor(page, "/NOT BEFORE/.test(document.querySelector('#ntOut').innerText)", 8000);
   await page.screenshot({ path: path.join(SHOTS, 'local_notary.png') });
-  ok(!!hash && cert, 'time notary returns a certificate for an account block');
+  ok(!!hash && cert, 'time notary returns an observation for an account block');
   await page.keyboard.press('Escape'); ok(!(await page.evaluate('NT.open')), 'Esc closes the notary');
   ok(w.errs.length === 0, 'no page errors (desktop)', w.errs.slice(0, 3).join(' | '));
   ok(w.csp.length === 0, 'no CSP violations with the production headers', w.csp.slice(0, 2).join(' | '));
@@ -225,7 +225,7 @@ async function regression() {
   await waitFor(page, "S.mode==='live'&&S.ready", 11000);
   const badHash = await page.evaluate("S.ms.flatMap(m=>m.blocks).find(b=>b.hash)?.hash");
   await page.keyboard.press('n'); await page.fill('#ntI', badHash); await page.press('#ntI', 'Enter');
-  ok(await waitFor(page, "/inconsistent node-reported/.test(document.querySelector('#ntOut').textContent)&&NT.last===null", 8000), 'inconsistent time bounds cannot produce a certificate');
+  ok(await waitFor(page, "/inconsistent node-reported/.test(document.querySelector('#ntOut').textContent)&&NT.last===null", 8000), 'inconsistent time bounds cannot produce an observation');
   ok(observed.errs.length === 0, 'regression controls have no page errors', observed.errs.join(' | '));
   ok(observed.csp.length === 0, 'regression controls respect the script hash policy', observed.csp.join(' | '));
   await page.close();
