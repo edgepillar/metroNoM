@@ -1,8 +1,8 @@
 // Checks that the public data sources the page depends on are reachable and healthy, from Node.js.
 //   node probe-nodes.mjs [wss://other-node:35998 ...]
 // Exit code 0 when at least one Zenon node answers and its frontier is fresh (< 60 s old).
-// If your sandbox blocks outbound WebSockets this will fail for every node; then run the browser
-// variant in AGENT_HANDOFF.md §5.1 from a real browser instead.
+// If your environment blocks outbound WebSockets this will fail for every node; verify from a normal
+// browser using the production checks described in README.md instead.
 import { createRequire } from 'node:module';
 const require = createRequire(process.env.METRONOM_TEST_MODULES ? new URL('file://' + process.env.METRONOM_TEST_MODULES + '/package.json') : import.meta.url);
 const WebSocket = require('ws');

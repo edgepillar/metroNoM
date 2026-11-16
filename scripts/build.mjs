@@ -1,4 +1,4 @@
-// Publish only the self-contained page. Repository documentation and tests stay private.
+// Deploy only the self-contained page. Repository documentation and tests stay outside the site output.
 import { readFile, mkdir, writeFile, readdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 const html = await readFile(new URL('../index.html', import.meta.url));

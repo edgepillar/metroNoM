@@ -7,6 +7,8 @@ In the spirit of mononaut's "tick tock, next block" for Bitcoin.
 
 **Live:** https://metronom-gamma.vercel.app
 
+**Source:** [edgepillar/metroNoM](https://github.com/edgepillar/metroNoM)
+
 One static HTML file. No backend, no application dependencies, no analytics. The page talks to public `znnd` nodes over
 WebSocket JSON-RPC and to mempool.space for Bitcoin. If no node is reachable it says so and plays a clearly
 labelled simulation until one comes back.
@@ -78,6 +80,14 @@ See `docs/DATA-MODEL.md` for the RPC calls and the time model, and `docs/ARCHITE
 ## Hosting and privacy
 
 Vercel runs `node scripts/build.mjs` and serves only the generated `public/index.html`. The script verifies the CSP hash before producing output. Repository files and tests are excluded independently of the upload ignore file.
+
+Production deploys from `main` through the GitHub integration, using Vercel project `metronom`, framework
+**Other**, an empty install command and output directory `public`. No application environment variables are required.
+
+Before a release, run `node scripts/build.mjs` and the local checks above. After editing the inline application
+script, update its SHA-256 in `vercel.json`; the build rejects a mismatched CSP. After deployment, verify the
+production checks, exact HTML bytes and headers, scene links and overlay. Keep credentials, local deployment
+metadata and test outputs outside Git. Retain failed checks alongside successful results in the review records.
 
 The page uses local system fonts. Its network connections are the selected public Zenon node and Bitcoin instance; their operators can see connection metadata. Notary lookups send the entered public address or block hash to the selected node. No wallet, signing, cookies, analytics or browser storage are used. Custom endpoint overrides accept HTTPS and WSS; plain HTTP and WS are limited to local development.
 

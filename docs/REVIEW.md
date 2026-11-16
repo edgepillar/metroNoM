@@ -3,7 +3,7 @@
 This is the initial publication record. The later [detailed scene re-review](SCENE-REVIEW.md) supersedes its
 application assessment where behavior changed; the original source pins and test results below remain historical.
 
-Reviewed on 2026-11-16. metroNoM is a visual client for public Zenon ledger observations and Bitcoin block data. It does not hold funds, sign transactions or independently verify consensus. The repository is private under `edgepillar`; the deployed page is intended for public viewing.
+Reviewed on 2026-11-16. metroNoM is a visual client for public Zenon ledger observations and Bitcoin block data. It does not hold funds, sign transactions or independently verify consensus. During this initial release review, the repository was private under `edgepillar`; the deployed page was intended for public viewing.
 
 ## Scope and source provenance
 

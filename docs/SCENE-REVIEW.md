@@ -5,13 +5,16 @@ public data connections and narrow, landscape and tablet layouts. The initial re
 [REVIEW.md](REVIEW.md); its successful rendering sweep did not establish every data relationship or label.
 The new controls intentionally exposed additional defects before corrections were made.
 
+Publication note: repository-visibility statements below describe the state at review time. The handoff guide
+was subsequently removed from the current tree; ongoing build and verification guidance is in [README.md](../README.md).
+
 ## Scope, identity and source pins
 
 - Baseline production commit: `1d169bcc7c8fe1e6466746cc47e0b16faa13e3f0`.
 - Baseline application SHA-256: `cb444e6ff41ef7801f695c743574334095b51e1559aeb7cc6270e29e7d098eac`.
 - Revised application commit: `156acc01e61d1aeeade18a0005679f1820a37332`.
 - Revised application SHA-256: `31808b221538b5a1d4302f7b2c379748a218530a1bc60fcb8178251b35735ce7`.
-- Repository: private `edgepillar/metroNoM`, branch `main`. Vercel project: `metronom` in `edgepillar`.
+- Repository at review time: private `edgepillar/metroNoM`, branch `main`. Vercel project: `metronom` in `edgepillar`.
 - Production: [metronom-gamma.vercel.app](https://metronom-gamma.vercel.app/).
 
 Source review, deterministic mock tests, real public-node observations, local browser tests and Vercel build
@@ -183,7 +186,7 @@ the visualization an independent chain verifier.
 
 Repository documentation, tests, build configuration, environment paths and Git metadata returned 404 from
 the deployment. Final documentation updates preserve the qualified application bytes; the latest hosted build
-and exact HTML response are checked again after those documentation changes. The GitHub repository remains private.
+and exact HTML response were checked again after those documentation changes. The GitHub repository remained private during that verification.
 
 ## Availability observations and remaining limits
 
@@ -203,4 +206,4 @@ open; a later success does not rewrite that failure. These are dated endpoint ob
 - Canvas scenes remain primarily visual. Keyboard navigation and the labelled notary dialog do not provide a
   complete nonvisual equivalent of every chart. No physical-device or exhaustive assistive-technology claim is made.
 - Only `public/index.html` is deployed. No license, analytics, cookies, wallet features, custom domain or paid
-  infrastructure was added. Repository privacy and deployment exclusions must remain verified at release time.
+  infrastructure was added. Repository visibility and deployment exclusions must be checked at release time.

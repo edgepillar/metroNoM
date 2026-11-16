@@ -142,7 +142,7 @@ async function production(base) {
   const { createHash } = await import('node:crypto');
   ok(createHash('sha256').update(await r.text()).digest('hex') === createHash('sha256').update(readFileSync(path.join(HERE, '../index.html'))).digest('hex'), 'deployed page matches the reviewed source');
   ok(r.headers.get('x-content-type-options') === 'nosniff', 'nosniff header present');
-  for (const p of ['/test/smoke.mjs', '/AGENT_HANDOFF.md', '/docs/ARCHITECTURE.md', '/README.md', '/vercel.json', '/scripts/build.mjs', '/.git/config', '/.env']) {
+  for (const p of ['/test/smoke.mjs', '/docs/SCENE-REVIEW.md', '/docs/ARCHITECTURE.md', '/README.md', '/vercel.json', '/scripts/build.mjs', '/.git/config', '/.env']) {
     const x = await fetch(base + p); ok(x.status === 404, `${p} is not deployed`, `HTTP ${x.status}`);
   }
   const page = await browser.newPage({ viewport: { width: 1440, height: 810 } });
@@ -152,7 +152,7 @@ async function production(base) {
   const st = await page.evaluate("document.querySelector('#statusTxt').textContent");
   if (!ok(live, 'connects to a public Zenon node and goes LIVE', st)) {
     console.log('      If the status says SIMULATED DATA · NO NODE REACHABLE, this test machine probably cannot open');
-    console.log('      outbound wss:// connections. Verify in a normal browser instead (AGENT_HANDOFF.md §5.5, step 3).');
+    console.log('      outbound wss:// connections. Verify in a normal browser using the production checks in README.md.');
   } else {
     const info = await page.evaluate("({node:S.node,frontier:S.frontier,age:Math.round(Date.now()/1000-S.lastTs),hud:document.querySelector('#hudH').textContent})");
     ok(info.age < 90, 'frontier is fresh', `node ${info.node}, momentum #${info.frontier}, ${info.age}s old`);
