@@ -59,6 +59,7 @@ function handle(req, ws) {
   else if (method === 'ledger.getAccountBlocksByPage') { let best = null; for (const [h, d] of chain) for (const b of d.blocks) if (b.address === params[0] && (!best || h > best[0])) best = [h, b, d.momentum]; result = { list: best ? [Object.assign({}, best[1], { confirmationDetail: { numConfirmations: FRONT - best[0] + 1, momentumHeight: best[0], momentumHash: best[2].hash, momentumTimestamp: best[2].timestamp } })] : [], count: best ? 1 : 0 }; }
   else if (method === 'embedded.pillar.getAll') result = { count: 98, list: pillars };
   else return { jsonrpc: '2.0', id, error: { code: -32601, message: 'no method ' + method } };
+  if(ws.behavior==='/incomplete' && method==='ledger.getDetailedMomentumsByHeight' && result.list.length>2)result.list.splice(1,1);
   if(ws.behavior==='/badbounds' && method==='ledger.getAccountBlockByHash' && result) result={...result,confirmationDetail:{...result.confirmationDetail,momentumHeight:1,momentumTimestamp:GEN}};
   return { jsonrpc: '2.0', id, result };
 }
@@ -81,7 +82,7 @@ const wss = new WebSocketServer({ noServer: true });
 const bws = new WebSocketServer({ noServer: true });
 srv.on('upgrade', (req, sock, head) => {
   const u = req.url.split('?')[0];
-  if (['/ws','/silent','/stale','/badbounds'].includes(u)) wss.handleUpgrade(req, sock, head, ws => { ws.behavior=u; wss.emit('connection', ws, req); });
+  if (['/ws','/silent','/stale','/badbounds','/incomplete'].includes(u)) wss.handleUpgrade(req, sock, head, ws => { ws.behavior=u; wss.emit('connection', ws, req); });
   else if (u === '/api/v1/ws') bws.handleUpgrade(req, sock, head, ws => { btcSubs.add(ws); ws.on('close', () => btcSubs.delete(ws)); });
   else sock.destroy();
 });
