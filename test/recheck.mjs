@@ -51,6 +51,8 @@ async function fixtures(){
   test(st.prod===2&&st.miss===1,'epoch counts derive from loaded momentums and bounded gaps');
   setPillars([{name:'Alpha',producerAddress:'producer-a',weight:'400000000',currentStats:{producedMomentums:2,expectedMomentums:3}},{name:'Beta',producerAddress:'producer-b',weight:'200000000',currentStats:{producedMomentums:1,expectedMomentums:3}},{name:'Gamma',producerAddress:'producer-c',weight:'100000000',currentStats:{producedMomentums:0,expectedMomentums:0}}]);
   updEpoch(true);test(document.querySelector('#eFill').textContent.includes('66.7'),'epoch fill does not substitute cached pillar counters for loaded coverage',document.querySelector('#eFill').textContent);
+  test(document.querySelector('#eAvg').textContent==='20.00 s','epoch mean uses the observed inter-momentum interval');
+  test(axes(101,GENESIS_TS+(cur+2.8)*TICK,false,GENESIS_TS+cur*TICK).split('MISSED')[1]===axes(101,GENESIS_TS+cur*TICK,false).split('MISSED')[1],'the ticking clock does not inflate observed missed share');
   const native=classify({blockType:2,tokenStandard:ZNN,amount:'125000000',hash:'a'.repeat(64),usedPlasma:21000,fusedPlasma:10000,difficulty:100});
   const custom=classify({blockType:2,tokenStandard:'custom',token:{symbol:'ZNN',decimals:8},amount:'900000000',hash:'b'.repeat(64)});
   test(native.kind==='znn'&&custom.kind==='zts','native transfer classification uses the token standard');
@@ -76,6 +78,14 @@ async function fixtures(){
   test(BT.byH.get(976002).ts===1001,'Bitcoin replaces a changed block at the same height');
   if(typeof validateRange==='function'){let rejected=false;try{validateRange([{momentum:{height:1,timestamp:GENESIS_TS,hash:'a'.repeat(64)},blocks:[]}],1,2)}catch(e){rejected=true}test(rejected,'incomplete RPC ranges cannot qualify as complete coverage');}
   else test(false,'incomplete RPC ranges cannot qualify as complete coverage');
+  const payloads=Array.from({length:1601},(_,i)=>({blockType:2,hash:(i+5000).toString(16).padStart(64,'0'),address:'sender',toAddress:'recipient',amount:'0',tokenStandard:ZNN,usedPlasma:21000,fusedPlasma:21000,difficulty:0}));
+  seed([make(cur,200,payloads)]);BL.layout(false);
+  test(BL.sq.size===1600&&BL.caption().includes('1,600 of 1,601'),'mosaic disclosure matches its 1600-block display cap');
+  seed([make(cur,300,payloads.slice(0,50).map((b,i)=>({...b,address:'sender-'+i,toAddress:'recipient'})))]);LM.build(serverNow());
+  test(LM.lay.bl.length===50&&LM.lay.order.length===36&&LM.lay.shown===35,'loom distinguishes sampled blocks from blocks on displayed threads');
+  const sendHash='e'.repeat(64),receiveHash='f'.repeat(64);
+  seed([make(cur-1,400,[{...payloads[0],hash:sendHash,address:'alice',toAddress:'bob'}]),make(cur,401,[{...payloads[0],hash:receiveHash,blockType:3,address:'bob',toAddress:'',fromBlockHash:sendHash}])]);LM.build(serverNow());
+  test(LM.lay.recvOf.has(sendHash)&&LM.lay.sends.get(sendHash).from==='alice','loom send-to-receive links follow fromBlockHash');
   return results;
  });
  for(const r of results)check(r.ok,r.name,r.detail||'');
@@ -96,7 +106,13 @@ async function live(base){
   const sample=S.ms.at(-10),response=await node.call('ledger.getDetailedMomentumsByHeight',[sample.h,1]);const raw=response.list[0];
   return{node:S.node,mode:S.mode,frontier:S.frontier,age:Date.now()/1000-S.lastTs,pillars:S.pillars.length,bitcoin:S.btc,historyLast:S.hs.h.at(-1),sampleHeight:sample.h,sampleHash:sample.hash,sampleHashMatches:raw.momentum.hash===sample.hash,sampleCountMatches:raw.blocks.length===sample.n,nativeVolume:sample.moved,genesis:S.genesis.btc,loaded:S.ms.length};
  });console.log('LIVE '+JSON.stringify(evidence));check(evidence.mode==='live'&&evidence.age>=-30&&evidence.age<90,'live node frontier is fresh');check(evidence.sampleHashMatches&&evidence.sampleCountMatches,'loaded account blocks match a fresh RPC response at the pinned height');check(evidence.historyLast===evidence.frontier,'live history endpoint follows the current observed frontier');
- const WebSocket=require('ws');const reference=await new Promise(resolve=>{const ws=new WebSocket('wss://node.atsocy.com:35998',{handshakeTimeout:8000});const timer=setTimeout(()=>{ws.terminate();resolve(null)},12000);ws.on('error',()=>{clearTimeout(timer);resolve(null)});ws.on('open',()=>ws.send(JSON.stringify({jsonrpc:'2.0',id:1,method:'ledger.getMomentumsByHeight',params:[evidence.sampleHeight,1]})));ws.on('message',raw=>{clearTimeout(timer);try{resolve(JSON.parse(raw).result?.list?.[0]||null)}catch{resolve(null)}ws.close()});});check(reference?.hash===evidence.sampleHash,'a second public node agrees at the sampled height',reference?String(reference.height):'reference unavailable');
+ const WebSocket=require('ws');let reference=null;
+ for(const url of ['wss://node.atsocy.com:35998','wss://my.hc1node.com:35998']){
+  if(new URL(url).hostname===evidence.node)continue;
+  const result=await new Promise(resolve=>{const ws=new WebSocket(url,{handshakeTimeout:8000});const timer=setTimeout(()=>{ws.terminate();resolve(null)},12000);ws.on('error',()=>{clearTimeout(timer);resolve(null)});ws.on('open',()=>ws.send(JSON.stringify({jsonrpc:'2.0',id:1,method:'ledger.getMomentumsByHeight',params:[evidence.sampleHeight,1]})));ws.on('message',raw=>{clearTimeout(timer);try{resolve(JSON.parse(raw).result?.list?.[0]||null)}catch{resolve(null)}ws.close()});});
+  console.log('REFERENCE '+JSON.stringify({url,available:!!result,height:result?.height,hash:result?.hash}));if(result){reference=result;break}
+ }
+ check(reference?.hash===evidence.sampleHash,'a second public node agrees at the sampled height',reference?String(reference.height):'reference unavailable');
  for(const scene of scenes){await page.evaluate(id=>{location.hash=id},scene);await page.waitForFunction(id=>SC.cur>=0&&SC.list[SC.cur].id===id,scene,{timeout:30000});check(await page.locator('#statusTxt').innerText().then(t=>t.startsWith('LIVE')),'live scene '+scene);}
  check(errors.length===0,'live audit has no browser errors',errors.join(' | '));await page.close();
 }
