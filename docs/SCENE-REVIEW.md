@@ -108,6 +108,8 @@ overflow, checks the mosaic against the HUD, saves screenshots and records page 
 does not prove all internal labels avoid collisions. Screenshot inspection complements those checks.
 This is Chromium viewport/touch emulation, not physical iOS or Android hardware qualification.
 
+The following table records the earlier local verification before progressive-history hardening.
+
 | Control | Source | Result |
 | --- | --- | --- |
 | Static output and exact CSP script hash | `f971709` | Passed; `index.html` only |
@@ -121,8 +123,7 @@ The final navigation correction preserves the scene drawing and data functions t
 changed hit behavior is exercised by the export/dialog controls. The production matrix is checked again
 against the final application bytes. The controlled PNG was 1,856 × 944 pixels and 108,658 bytes.
 
-Production results are added after deployment and live verification. Public deployment is not inferred from
-these local results.
+Public deployment is not inferred from these local results. The final production evidence is recorded below.
 
 The first production recheck at deployment commit `25df1c51abd6fccc48dcefaec29ea3c9f8791c3c` retained the
 `f971709` application bytes. Its 21 smoke controls failed one check: history did not become ready inside the
@@ -140,6 +141,49 @@ recorded; public-source latency is not established as having one exclusive cause
 At `63d303c`, 30/30 data, 19/19 regression, 20/20 mock smoke and 7/7 controlled interaction checks passed.
 The `156acc0` follow-up rejects historical timestamps beyond the observed frontier and adapts Spiral's
 curve subdivisions to large partial-sample gaps. This keeps the spiral smooth while the remaining samples load.
+
+## Final production verification
+
+Vercel deployment commit `e53e213b2b42345fc9e684dd6348b9833b9dff3e` served the application SHA-256
+`31808b221538b5a1d4302f7b2c379748a218530a1bc60fcb8178251b35735ce7`. Its hosted static build succeeded.
+The final browser qualification ran locally against that public production URL; it is not a hosted browser-CI run.
+
+| Control | Result |
+| --- | --- |
+| Final source build and deterministic data controls at `156acc0` | Passed; 30/30 data checks |
+| Regression, mock smoke and interaction checks at `63d303c` | 19/19, 20/20 and 7/7 passed |
+| Production source bytes, headers, exclusions, scene pins and overlay | 21/21 passed |
+| Fresh live frontier, repeated lookup, second-node agreement and all fifteen scenes | 20/20 passed |
+| Four viewport sizes × fifteen production scenes, plus browser-error check | 61/61 passed |
+| Nonempty sample, independently summed amounts, epoch partition, PNG and mobile notary | 7/7 passed |
+| Page errors and CSP violations in the final production smoke/details runs | Zero |
+| Final command capture | Actual exit 0; complete stdout and stderr retained |
+
+The production smoke run reached `node.zenonhub.io` at momentum #14,677,695, seven seconds old, with 98
+pillars and Bitcoin height #976,181. History became ready within the existing time bound. A second session
+compared momentum #14,677,689 with a fresh response and with atsocy; both returned hash
+`b9a1d453297aca0762831af941ce40b0edb24307315a2df8f9f6dec061febf28`.
+
+The additional live lookup selected a nonempty momentum, #14,677,546, and matched its account-block hashes
+against the fresh response. Its native send sums were zero; positive native-amount cases were covered by
+the deterministic fixtures and an earlier controlled interaction run. This live zero result is not evidence of
+nonzero mainnet amount precision. The captured epoch partition was 1,000 produced, 625 missed, 1,482
+unloaded, 2 pending and 5,531 future: exactly 8,640. Forty-four produced slots included account blocks.
+
+The real PNG download was 1,856 × 944 pixels, 95,463 bytes, SHA-256
+`03c29e438af06489ebbf14d2e6b959140ed988b3cf21fe42594a253180e28b6b`.
+Both its contents and the mobile epoch view were inspected. Production screenshots also confirmed the
+partial-history disclosure, smooth Spiral, short landscape clocks and corrected mosaic/HUD spacing.
+All sixty scene/viewport combinations passed; the tests do not establish physical-device compatibility.
+
+The final endpoint probe found all three configured Zenon nodes at momentum #14,677,709, reporting v0.0.10
+and 98 pillars, with frontier ages between 19 and 22 seconds. mempool.space answered at Bitcoin height
+#976,182. Earlier timeouts remain in the record. Two reachable nodes agreeing at one height does not make
+the visualization an independent chain verifier.
+
+Repository documentation, tests, build configuration, environment paths and Git metadata returned 404 from
+the deployment. Final documentation updates preserve the qualified application bytes; the latest hosted build
+and exact HTML response are checked again after those documentation changes. The GitHub repository remains private.
 
 ## Availability observations and remaining limits
 
