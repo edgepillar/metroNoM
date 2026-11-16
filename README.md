@@ -18,8 +18,8 @@ The page cycles through them, cutting on the arrival of each new momentum. Add `
 | id | what it shows |
 |---|---|
 | `blocks` | account blocks of recent momentums as a mosaic, plus incoming blocks over time |
-| `chain` | the momentum chain as cubes, each block arcing back to the momentum it acknowledged |
-| `glyphs` | every momentum hash as a 16×16 glyph, one tile per 10 s slot, missed slots crossed out |
+| `chain` | observed momentum cubes and acknowledgement arcs, followed by scheduled slot cubes |
+| `glyphs` | observed momentum hashes as 16×16 glyphs, confirmed missed slots crossed out |
 | `dial` | the current election round: 30 slots, who produced each, who missed |
 | `constellation` | pillars as stars; each round of 30 slots draws its own figure |
 | `waterfall` | slots flowing down, pillars across: a spectrogram of block production |
@@ -28,12 +28,14 @@ The page cycles through them, cutting on the arrival of each new momentum. Add `
 | `timeline` | the last 24 hours and the current epoch |
 | `epoch` | the epoch as a rug of 8,640 slots (save it as a PNG) |
 | `heat` | which blocks paid plasma with proof of work, and which used fused QSR |
-| `lostlink` | today's slot clock next to a simulation of the 2020 whitepaper's PoW-paced epochs |
+| `lostlink` | today's slot clock next to an illustrative PoW epoch model with stated assumptions |
 | `spiral` | the whole history spiralling out of Bitcoin block #710,968, which Zenon's genesis commits to |
 | `history` | time-lapse since genesis |
 | `pillars` | pillars by weight, flashing as they produce |
 
-Between scenes: a Bitcoin interstitial when a new Bitcoin block lands, and a short glitch when a slot is missed.
+Between scenes: a Bitcoin interstitial when a new Bitcoin block lands, and a short glitch when a later
+observation confirms a missed slot. Unloaded, pending and future slots are distinguished. Pinned scenes
+explain unavailable dependencies while retrying in the background.
 
 ## Options
 
@@ -62,8 +64,13 @@ Tests (mock node, locked-down embed, Playwright smoke test) live in `test/`:
 ```sh
 cd test && npm ci --ignore-scripts && npx playwright install chromium
 npm run regression                 # failure and recovery controls
+npm run data                       # scene counts, sampling and data semantics
+npm run responsive -- http://localhost:8857/   # 15 scenes at four viewport sizes, using mock data
 npm run smoke                      # local mock fixtures
 npm run smoke:prod -- https://metronom-gamma.vercel.app     # against a deployment
+npm run live -- https://metronom-gamma.vercel.app           # live source and sample agreement
+npm run live:details -- https://metronom-gamma.vercel.app   # nonempty sample, native sums, PNG and lookup
+npm run responsive -- https://metronom-gamma.vercel.app     # real-data layout checks
 ```
 
 See `docs/DATA-MODEL.md` for the RPC calls and the time model, and `docs/ARCHITECTURE.md` for the code map.
@@ -76,4 +83,5 @@ The page uses local system fonts. Its network connections are the selected publi
 
 [Zenon Observatory](https://0x3639.com/go-zenon-version/) provides complementary peer-version and production observations. It does not replace the detailed ledger RPC calls or Bitcoin data required by every scene.
 
-See `docs/REVIEW.md` for findings, release checks and remaining limitations. No license has been added.
+See [the detailed scene review](docs/SCENE-REVIEW.md) for the current re-review, findings and verification.
+[The initial release review](docs/REVIEW.md) is retained as historical evidence. No license has been added.

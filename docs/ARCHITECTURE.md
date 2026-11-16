@@ -1,6 +1,6 @@
 # Architecture of `index.html`
 
-One self-contained file (~140 KB): CSS, markup and one classic `<script>` with no dependencies, a small static-output copy step
+One self-contained file: CSS, markup and one classic `<script>` with no dependencies, a small static-output copy step
 and no external JavaScript. Rendering is Canvas 2D, except the momentum chain scene, which is DOM elements with
 CSS 3D transforms. Sound is generated with WebAudio (off until the user turns it on).
 
@@ -58,8 +58,10 @@ section banners (`/* ====…  scene: … */`) are the stable anchors.
    display font, then plays the intro (or, with `?overlay`, skips it).
 2. `start()` tries each node with a 7 s transport timeout and bounded RPC calls. If every node refuses within 1.5 s (a sandbox or CSP that
    blocks WebSockets) it switches to the simulation immediately; otherwise after 12 s, even if a socket opened but never answered RPC.
-3. `onConnected()`: subscribe → frontier → last 1,000 detailed momentums → `markReady()` → pillars, history,
-   back-fill to 8,640 momentums, genesis data. Timers: pillars every 60 s, frontier watchdog every 5 s.
+3. `onConnected()`: subscribe → fresh frontier → complete validated detailed range → `markReady()` → pillars,
+   history (batches of 20 requests), back-fill to 8,640 momentums, genesis data. A reconnect checks the loaded
+   frontier hash, catches up within the window or replaces an excessively old snapshot. Timers: pillars and
+   failed history/back-fill retries every 60 s, frontier watchdog every 5 s.
 4. Every new momentum goes through `ingest()` → `bus.emit('live', [...])`. Scenes react via `onLive` hooks;
    the manager uses the same event to cut scenes on the beat.
 5. If the socket drops, `reconnect()` rotates through the node list with back-off and catches up from the
@@ -110,3 +112,10 @@ To add a scene: add a `<section class="scene" id="s-name"><canvas id="…" class
 The CSP authorizes the exact application script hash, permits the inline styles needed for animation and allows HTTPS/WSS data providers. Broad data transport is intentional for endpoint overrides; external JavaScript is not allowed. Query overrides reject credentials, fragments and insecure remote schemes.
 
 `test/smoke.mjs --regression` covers stalled RPC, stale nodes, disconnection, watchdog recovery, simulation data separation, endpoint validation, dialog focus and notary trust labels. `METRONOM_TEST_MODULES`, `CHROME_PATH` and `SHOTS_DIR` can select separately managed local tooling and output without embedding private paths in source.
+
+`test/recheck.mjs` adds deterministic scene-data fixtures, unavailable-dependency and incomplete-range failover
+controls. Its `--mobile <URL>` mode checks all scenes at four viewport sizes; `--live <URL>` records fresh
+source data, a repeated sample lookup and second-node agreement. See `docs/SCENE-REVIEW.md` for the exact
+source and results. `slotState`, `epochStats`, `slotStats`, `historyTip` and `heatSummary` centralize the data
+semantics that the visual scenes share. Scene entry is deferred until its dependencies are available; a pinned
+unavailable scene shows an explicit notice instead of keeping the intro indefinitely.

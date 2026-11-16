@@ -21,6 +21,8 @@ cd test
 npm ci --ignore-scripts
 npm run probe
 npm run regression
+npm run data
+npm run responsive -- http://localhost:8857/
 npm run smoke
 cd ..
 node scripts/build.mjs
@@ -33,14 +35,22 @@ After editing the application script, update its SHA-256 source in the `Content-
 ```sh
 cd test
 npm run smoke:prod -- https://metronom-gamma.vercel.app
+npm run live -- https://metronom-gamma.vercel.app
+npm run live:details -- https://metronom-gamma.vercel.app
+npm run responsive -- https://metronom-gamma.vercel.app
 ```
 
 Verify the actual production URL, exact response bytes and CSP, fresh LIVE status, Bitcoin data, pillar list and history. Test all scene links and `?overlay&calm#dial`. Repository documentation, tests, configuration, environment files and Git metadata must return 404 from the deployment.
 
-A successful mocked test does not demonstrate live service availability. A public RPC response is node-reported data; it is not an independently verified consensus or timestamp proof. Record failures and limits alongside successful checks in `docs/REVIEW.md`.
+A successful mocked test does not demonstrate live service availability. A public RPC response is node-reported data; it is not an independently verified consensus or timestamp proof. Record failures and limits alongside successful checks in `docs/SCENE-REVIEW.md`. Keep the initial publication evidence in `docs/REVIEW.md` unchanged.
+
+The responsive audit checks all fifteen scenes at 320 × 568, 390 × 844, 844 × 390 and 768 × 1024. It measures
+canvas text bounds, DOM overflow and errors; it does not replace screenshot inspection or physical-device testing.
+The live audit compares a loaded sample with a fresh response and a second reachable public node. Agreement at
+one sampled height is limited evidence, not consensus verification. Record each endpoint's actual availability.
 
 ## Operational boundaries
 
 Preserve explicit simulation labels. Source outages must never silently turn simulated data into LIVE data. Keep automatic failover and stale-frontier checks. Do not add analytics, external scripts, hidden tracking, a custom domain or a paid service without a corresponding request.
 
-See `docs/DATA-MODEL.md` for data semantics, `docs/ARCHITECTURE.md` for the code map, and `docs/REVIEW.md` for release findings and verification.
+See `docs/DATA-MODEL.md` for data semantics, `docs/ARCHITECTURE.md` for the code map, and `docs/SCENE-REVIEW.md` for current release findings and verification.
