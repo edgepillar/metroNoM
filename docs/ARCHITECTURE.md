@@ -59,9 +59,9 @@ section banners (`/* ====…  scene: … */`) are the stable anchors.
 2. `start()` tries each node with a 7 s transport timeout and bounded RPC calls. If every node refuses within 1.5 s (a sandbox or CSP that
    blocks WebSockets) it switches to the simulation immediately; otherwise after 12 s, even if a socket opened but never answered RPC.
 3. `onConnected()`: subscribe → fresh frontier → complete validated detailed range → `markReady()` → pillars,
-   history (batches of 20 requests), back-fill to 8,640 momentums, genesis data. A reconnect checks the loaded
+   history (batches of 8 requests, publishing partial samples as they arrive), back-fill to 8,640 momentums, genesis data. A reconnect checks the loaded
    frontier hash, catches up within the window or replaces an excessively old snapshot. Timers: pillars and
-   failed history/back-fill retries every 60 s, frontier watchdog every 5 s.
+   incomplete history/back-fill retries every 60 s, frontier watchdog every 5 s. History has one loader at a time.
 4. Every new momentum goes through `ingest()` → `bus.emit('live', [...])`. Scenes react via `onLive` hooks;
    the manager uses the same event to cut scenes on the beat.
 5. If the socket drops, `reconnect()` rotates through the node list with back-off and catches up from the

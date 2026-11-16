@@ -9,8 +9,8 @@ The new controls intentionally exposed additional defects before corrections wer
 
 - Baseline production commit: `1d169bcc7c8fe1e6466746cc47e0b16faa13e3f0`.
 - Baseline application SHA-256: `cb444e6ff41ef7801f695c743574334095b51e1559aeb7cc6270e29e7d098eac`.
-- Revised application commit: `f9717096504d80f5f4ab1db7c30d6596616ae246`.
-- Revised application SHA-256: `9975bbd6194f510244a7ad104684809ad25e3dda00a73e260ea6eb7ace51b107`.
+- Revised application commit: `156acc01e61d1aeeade18a0005679f1820a37332`.
+- Revised application SHA-256: `31808b221538b5a1d4302f7b2c379748a218530a1bc60fcb8178251b35735ce7`.
 - Repository: private `edgepillar/metroNoM`, branch `main`. Vercel project: `metronom` in `edgepillar`.
 - Production: [metronom-gamma.vercel.app](https://metronom-gamma.vercel.app/).
 
@@ -31,7 +31,7 @@ that attempt remains a failure with an undetermined cause, not a retrospective s
 | Epoch produced and future counts could include the same current slot, totaling 8,641. | One shared partition assigns each of the 8,640 slots exactly once; “with account blocks” is a produced subset. |
 | The shared epoch panel could substitute cached pillar counters and show an inconsistent fill fraction. | Fill uses produced and bounded-missed slots in loaded coverage. Unloaded and pending counts are disclosed. Mean interval uses loaded epoch timestamps. |
 | Bitcoin interval statistics counted unobserved trailing slots as missed. | The half-open interval counts produced, bounded-missed, unknown and pending slot starts separately. Partial coverage is visible. |
-| History and Spiral could remain frozen at their initial sampling frontier. | Their last sample advances with the observed frontier. History requests are issued in groups of twenty, and failed history loads retry. |
+| History and Spiral could remain frozen at their initial sampling frontier or wait for every historical query before displaying available samples. | Their last sample advances with the observed frontier. Groups of eight publish partial samples immediately; incomplete sampling retries with a single loader. |
 | A short RPC response could qualify as complete coverage. | Exact count, contiguous heights, timestamp alignment/order, hash shape and loaded boundaries are checked before ingestion. Incomplete initial data fails over; older coverage remains unknown until loaded. |
 | Chain cubes could retain an old cache after bulk catch-up. | Bulk ingestion rebuilds the cube cache. Future cubes describe scheduled slots rather than guaranteed future momentum heights. |
 | A pillar weight update with the same list length could leave stale constellation sizes. | Pillar updates invalidate the constellation layout. Labels avoid each other, with current/followed producers prioritized. |
@@ -123,6 +123,23 @@ against the final application bytes. The controlled PNG was 1,856 × 944 pixels 
 
 Production results are added after deployment and live verification. Public deployment is not inferred from
 these local results.
+
+The first production recheck at deployment commit `25df1c51abd6fccc48dcefaec29ea3c9f8791c3c` retained the
+`f971709` application bytes. Its 21 smoke controls failed one check: history did not become ready inside the
+45-second bound in that session. A later 20/20 live audit loaded history and found two-node agreement at
+momentum #14,677,627. All 61 responsive controls passed. The additional live-details run timed out on its
+fresh detailed-momentum lookup before completing its assertions. These are retained failures, not passed checks.
+
+The `63d303c` correction publishes validated history groups progressively and labels partial coverage. It
+reduces concurrent history queries from twenty to eight, retries incomplete sampling and guards against
+overlapping loaders. A controlled source supplies the first group while withholding later groups; the new
+data control requires History to become usable while still marked partial. The direct sample recheck uses
+the same explicit 15-second bound as the application's detailed-range reader. The prior timeout remains
+recorded; public-source latency is not established as having one exclusive cause.
+
+At `63d303c`, 30/30 data, 19/19 regression, 20/20 mock smoke and 7/7 controlled interaction checks passed.
+The `156acc0` follow-up rejects historical timestamps beyond the observed frontier and adapts Spiral's
+curve subdivisions to large partial-sample gaps. This keeps the spiral smooth while the remaining samples load.
 
 ## Availability observations and remaining limits
 

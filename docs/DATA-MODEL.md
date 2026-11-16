@@ -23,7 +23,7 @@ are answered with an array.
 | `ledger.subscribe` | `["momentums"]` | returns a subscription id; notifications arrive as `{method:"ledger.subscription", params:{subscription, result:[{hash, height, …}]}}` | `onConnected` |
 | `ledger.getFrontierMomentum` | `[]` | `height`, `timestamp` | `onConnected`, watchdog every 5 s if notifications stall for 25 s |
 | `ledger.getDetailedMomentumsByHeight` | `[height, count ≤ 1000]` | `list[].momentum.{height,timestamp,hash,producer}`, `list[].blocks[]` (account blocks, below) | initial 1,000; catch-up; back-fill to 8,640 momentums |
-| `ledger.getMomentumsByHeight` | `[height, count]` | `list[].{height,timestamp}`; momentum #1 `data` (base64) | up to 240 history samples in batches of 20; genesis; reconnect overlap check |
+| `ledger.getMomentumsByHeight` | `[height, count]` | `list[].{height,timestamp}`; momentum #1 `data` (base64) | up to 240 history samples in batches of 8; genesis; reconnect overlap check |
 | `embedded.pillar.getAll` | `[0, 500]` | `list[].{name, producerAddress, weight, currentStats.{producedMomentums, expectedMomentums}}` | every 60 s |
 | `ledger.getAccountBlockByHash` | `[hash]` | account block + `confirmationDetail.{numConfirmations, momentumHeight, momentumHash, momentumTimestamp}` | time notary |
 | `ledger.getAccountBlocksByPage` | `[address, 0, 1]` | newest block of an address | time notary (address input) |
@@ -89,6 +89,9 @@ Bitcoin header or proof-of-work validation.
 - Retention is 8,640 **momentums**, not a guaranteed 24 hours. Timeline and Heat separately filter by timestamp
   for their last-24-hour samples. History and Spiral interpolate sampled heights; their final point advances
   with the latest observed frontier rather than the ticking wall clock.
+- History becomes usable after the first valid sample group instead of waiting for all groups. During loading,
+  its point count and partial status remain explicit. The current observed frontier provides the endpoint.
+  Incomplete sampling retries without overlapping loaders or replacing a richer partial sample with a smaller one.
 - The selected node reports the chain timestamps surrounding an account block: not before the momentum it acknowledged
   (`momentumAcknowledged`), not after the momentum that confirmed it. The notary maps both bounds to Bitcoin
   through the mempool timestamp endpoint. These are miner-reported timestamp correlations, not a cryptographic timestamp proof. The page does not independently verify account inclusion, chain canonicality, consensus finality or wall-clock creation time.
