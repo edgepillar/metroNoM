@@ -24,8 +24,11 @@ canvas{display:block}
 /* HUD */
 #hud{position:fixed;left:2.3vw;top:2.6vh;z-index:10;font:500 var(--ui)/1.4 Arial;letter-spacing:.06em;text-transform:uppercase;font-variant-numeric:tabular-nums;color:#e6e9f2;pointer-events:none}
 #hudCap{color:#565c77;letter-spacing:.12em;margin-top:.5em;font-size:.86em;max-width:46vw}
-#status{position:fixed;right:2.3vw;top:2.6vh;z-index:10;font:500 var(--ui)/1.4 Arial;letter-spacing:.08em;text-transform:uppercase;color:#6b7190;display:flex;align-items:center;gap:.6em;pointer-events:none}
-#status i{width:.62em;height:.62em;border-radius:50%;background:#6b7190;display:block;transition:transform .25s,box-shadow .25s}
+#status{position:fixed;right:calc(2.3vw + 82px);top:2.6vh;max-width:calc(94vw - 82px);z-index:10;font:500 var(--ui)/1.4 Arial;letter-spacing:.08em;text-transform:uppercase;color:#6b7190;display:flex;align-items:center;gap:.6em;pointer-events:none}
+#status i{width:.62em;height:.62em;flex-shrink:0;border-radius:50%;background:#6b7190;display:block;transition:transform .25s,box-shadow .25s}
+#statusTxt{min-width:0;overflow-wrap:anywhere}
+#repoLink{position:fixed;right:2.3vw;top:max(6px,calc(2.6vh - 7px));z-index:11;display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:0 8px;border:1px solid #23283f;background:rgba(10,12,22,.75);color:#8a90a8;font:500 10px/1.4 Arial;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;white-space:nowrap}
+#repoLink:hover{color:#fff;border-color:#3a4166}
 #status.live i{background:var(--znn)}
 #status.live.beat i{transform:scale(1.7);box-shadow:0 0 12px var(--znn)}
 #status.sim i{background:#ffb341}
@@ -38,7 +41,7 @@ canvas{display:block}
 /* nav */
 #nav{position:fixed;right:2.3vw;bottom:2.4vh;z-index:11;display:flex;gap:6px;opacity:0;pointer-events:none;transition:opacity .5s;font:500 11px Arial;letter-spacing:.06em}
 #nav.show,#nav:focus-within{opacity:1;pointer-events:auto}
-#nav button:focus-visible,.sbtn:focus-visible,.nt-card button:focus-visible{outline:2px solid #6ff34d;outline-offset:3px}
+#repoLink:focus-visible,#nav button:focus-visible,.sbtn:focus-visible,.nt-card button:focus-visible{outline:2px solid #6ff34d;outline-offset:3px}
 #nav button{all:unset;cursor:pointer;padding:6px 10px;border:1px solid #23283f;color:#8a90a8;background:rgba(10,12,22,.75);text-transform:uppercase}
 #nav button:hover{color:#fff;border-color:#3a4166}
 #nav button.cur{color:#fff;border-color:#4f7dff}
@@ -170,7 +173,7 @@ body.glitch #scan{animation:scan .52s}
 
 /* ?overlay: transparent stream overlay with a ticker */
 html.overlay,html.overlay body,html.overlay #stage{background:transparent!important}
-html.overlay #stage::after,html.overlay #hud,html.overlay #status,html.overlay #nav{display:none}
+html.overlay #stage::after,html.overlay #hud,html.overlay #status,html.overlay #repoLink,html.overlay #nav{display:none}
 html.overlay #stage{bottom:calc(2.5vh + 58px)}
 #ticker{display:none}
 html.overlay #ticker{display:flex;position:fixed;left:2vw;right:2vw;bottom:2.5vh;z-index:12;align-items:center;gap:18px;padding:10px 16px;background:rgba(0,0,0,.74);border:1px solid #23283f;font:600 14px Arial;color:#e6e9f2;font-variant-numeric:tabular-nums;letter-spacing:.02em;white-space:nowrap}
@@ -178,7 +181,8 @@ html.overlay #ticker{display:flex;position:fixed;left:2vw;right:2vw;bottom:2.5vh
 #ticker .bar i{position:absolute;left:0;top:0;bottom:0;width:0;background:#6ff34d}
 #tkS{color:#6ff34d}#tkX{color:#ff8a6b}#tkC{color:#f7931a}
 @media(max-width:700px){
-  #status{top:2vh;font-size:10px;max-width:94vw}
+  #status{top:2vh;font-size:10px;line-height:12px}
+  #repoLink{top:max(6px,calc(2vh - 8px))}
   #hud{top:6.5vh;left:4vw;right:4vw;font-size:10px}
   #hudCap{max-width:92vw;line-height:1.5}
   #nav{bottom:1vh;max-height:26vh;overflow:auto}
@@ -232,6 +236,7 @@ html.overlay #ticker{display:flex;position:fixed;left:2vw;right:2vw;bottom:2.5vh
 </div>
 <div id="hud"><div id="hudDate">—</div><div id="hudH">MOMENTUM —</div><div id="hudCap"></div><div id="hudMiss"></div></div>
 <div id="status" class="connecting" role="status" aria-live="polite"><i></i><span id="statusTxt">CONNECTING…</span></div>
+<a id="repoLink" href="https://github.com/edgepillar/metroNoM" target="_blank" rel="noopener noreferrer" aria-label="View metroNoM on GitHub (opens in a new tab)">GitHub <span aria-hidden="true">↗</span></a>
 <nav id="nav" aria-label="Scenes and controls"></nav>
 <div id="tip"></div>
 <div id="scan"></div>
