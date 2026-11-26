@@ -25,7 +25,7 @@ section banners (`/* ====…  scene: … */`) are the stable anchors.
 | 277 | account block classification | `KINDS` (colours/labels), `embName`, `classify` |
 | 305 | state | `S` (see below), `mkMomentum`, `ingest`, `setPillars` |
 | 343 | node client | `class Node` (`open`, `call`, `batch`), `start`, `reconnect`, `onConnected`, `catchUp`, `loadOlder`, `loadGenesis`, `loadPillars`, `loadHistory` |
-| 451 | simulation | `startSim` (only when no node is reachable or `?sim`; clearly labelled), retries all configured real nodes every 30 s and reloads only when one reports a fresh frontier |
+| 451 | simulation | `startSim` displays labelled synthetic data. Recovery replaces it in place after subscription and detailed snapshot checks. |
 | 485 | status / HUD | `setStatus`, `axes` (two time axes), `hud` |
 | 496 | Bitcoin | `BT`, `btcMerge`, `btcRefresh`, `btcSocket`, `btcPoll`, `btcStart`, `btcSim` |
 | 533 | particles | dot-matrix text for `INTRO` and `OUTRO` (three outro variants: tick tock / genesis phrases / Zeno paradox) |
@@ -73,7 +73,8 @@ Events on `bus`: `ready`, `live`, `bulk`, `pillars`, `history`, `btcblock`, `mis
 
 `ms` (momentum records, sorted by height, ≤ 8,640), `byH`, `bySlot`, `frontier`, `lastTs`, `pillars`, `prodName`
 (producer address → pillar name), `missLog` (attributed misses, 3 h), `hist`/`hs` (history samples), `btc`
-(Bitcoin tip height), `genesis`, `mode` (`connecting` / `live` / `sim`), `node`, `clockOff` (median offset
+(Bitcoin tip height), `genesis`, `mode` (`connecting` / `reconnecting` / `live` / `sim`), `stalled` (old
+frontier from a responding node), `node`, `clockOff` (median display offset
 between momentum timestamps and the local clock), `ready`.
 
 A momentum record: `{h, ts, hash, producer, slot, blocks:[classified account blocks], n, plasma, moved}`.

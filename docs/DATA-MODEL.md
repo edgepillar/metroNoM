@@ -61,9 +61,11 @@ unbounded gap.
 
 Change the instance with `?btcapi=https://your-mempool`. The REST endpoints answer cross-origin requests.
 Blocks are ordered by height. A changed hash or timestamp at the same height replaces the cached block;
-an authoritative recent snapshot can lower the displayed tip after a reorganization. A later socket update
-prevents an earlier in-flight HTTP snapshot from overwriting it. This is a visual cache repair, not independent
-Bitcoin header or proof-of-work validation.
+a snapshot whose highest block is below the current displayed tip is ignored. This keeps a lagging CDN
+response from rewinding a socket update and replaying its announcement. The display reconciles replacements
+once the source supplies them at or above its current height. A later socket update also supersedes an
+in-flight HTTP snapshot. The block notification computes Zenon interval counts only for increasing miner
+timestamps within a day and labels partial coverage.
 
 ## Time model
 
@@ -116,9 +118,18 @@ See [the scene re-review](SCENE-REVIEW.md) for the later release and availabilit
 
 ## Freshness and source boundaries
 
-LIVE requires a frontier timestamp no more than 90 seconds behind or 30 seconds ahead of the browser clock, plus loaded detailed momentums. The watchdog checks freshness every five seconds and removes LIVE while reconnecting. Initial connection work has a 12-second deadline before explicit simulation. A socket that opens without RPC responses does not qualify as a usable node.
+LIVE requires a frontier timestamp no more than 90 seconds behind or 30 seconds ahead of the reference
+clock, plus loaded detailed momentums. The app takes UTC from a bounded same-origin HTTP `Date` request when
+available and uses elapsed browser time to advance it. If the request fails, the device clock supplies UTC.
+A separate small offset smooths the visual slot clock. On an established connection the watchdog can show
+`NO RECENT MOMENTUM` while the node still responds with an old frontier. A fresh observation clears this
+status. A socket or RPC failure triggers failover. Initial connection work has a 12-second deadline before
+explicit simulation.
 
-Simulation uses synthetic Zenon and Bitcoin data. Automatic fallback closes Bitcoin transport, aborts in-flight fetches and resets real Bitcoin data before generating the synthetic series. Recovery probes every configured Zenon endpoint and requires a fresh frontier before reloading. Forced `?sim` does not contact either public data provider.
+Simulation uses synthetic Zenon and Bitcoin data. Automatic fallback closes Bitcoin transport, aborts in-flight
+fetches and resets real Bitcoin data before generating the synthetic series. Recovery requires a working
+subscription and a complete, fresh snapshot that matches the node's frontier. It replaces the synthetic
+state in the same tab, then restarts Bitcoin transport. Forced `?sim` does not contact either public provider.
 
 A pinned scene with an unavailable dependency remains selected and displays a retry explanation. The intro
 does not wait indefinitely for optional Bitcoin, pillar or history data. Automatic cycling skips unavailable scenes.

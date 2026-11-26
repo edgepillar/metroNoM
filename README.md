@@ -54,6 +54,9 @@ Keys: `1`–`9` scenes · `←`/`→` step · `0` auto · `Space` pause · `N` t
 
 **Time notary** (`N`, or click a block in the mosaic): paste an account block hash or a `z1…` address. The selected public node reports the momentum it acknowledged and the momentum that confirmed it. Bitcoin timestamps provide context. The copied JSON is an observation, not an independently verified inclusion, finality or timestamp proof. The lookup is sent to the selected node.
 
+On touch screens, tap a mosaic tile to read its card and tap the same tile again to open its time lookup.
+Tap outside the mosaic to dismiss the card. The scene controls provide access to all scenes.
+
 **OBS:** add a Browser Source with `https://metronom-gamma.vercel.app/?overlay&calm#dial` (or no hash to cycle), 1920×1080,
 transparent background is automatic.
 

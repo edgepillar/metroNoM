@@ -37,7 +37,7 @@ async function fixtures(){
  const results=await page.evaluate(()=>{
   node.close();btcStop();SC.paused=true;const results=[];const test=(ok,name,detail)=>results.push({ok:!!ok,name,detail});
   const epoch=Math.floor((Date.now()/1000-GENESIS_TS)/EPOCH),s0=epoch*SLOTS_PER_EPOCH,cur=s0+100;
-  const clock=s=>S.clockOff=GENESIS_TS+s*TICK-Date.now()/1000;
+  const clock=s=>S.clockOff=GENESIS_TS+s*TICK-utcNow();
   const make=(slot,h,blocks=[])=>mkMomentum({momentum:{height:h,timestamp:GENESIS_TS+slot*TICK,hash:h.toString(16).padStart(64,'0'),producer:'producer-a'},blocks});
   const seed=records=>{S.ms=records;S.byH=new Map(records.map(r=>[r.h,r]));S.bySlot=new Map(records.map(r=>[slotOf(r.ts),r]));records.forEach(r=>r.slot=slotOf(r.ts));S.frontier=records.at(-1).h;S.lastTs=records.at(-1).ts;S.mode='live';S.ready=true;};
   seed([make(cur-2,100),make(cur,101)]);clock(cur+2.8);
@@ -62,6 +62,7 @@ async function fixtures(){
   test([...hashBits('a'.repeat(64)).slice(0,8)].join('')==='10101010','glyphs preserve the supplied hash bits');
   CH.build();const next=make(cur+1,102);ingest([{momentum:{height:next.h,timestamp:next.ts,hash:next.hash,producer:next.producer},blocks:[]}],false);
   test(CH.conf[0].r.h===102,'chain cubes refresh after bulk catch-up');
+  CH.advance(S.ms.at(-1));test(CH.conf.filter(c=>c.r.h===102).length===1,'delayed chain animation skips an already rendered momentum');
   S.hist=[{h:1,ts:GENESIS_TS},{h:100,ts:GENESIS_TS+(cur-2)*TICK}];bus.emit('history');bus.emit('bulk');
   test(S.hs.h.at(-1)===S.frontier,'History and Spiral end at the latest observed momentum');
   test(missedEpoch(S.pillars[1])===2,'waterfall deficits use expected minus produced node counters');
@@ -76,6 +77,13 @@ async function fixtures(){
   test(BT.blocks.map(b=>b.h).join(',')==='976001,976002','Bitcoin block ordering uses height despite nonmonotonic timestamps');
   btcMerge([{height:976002,timestamp:1001,id:'c'.repeat(64)}],false);
   test(BT.byH.get(976002).ts===1001,'Bitcoin replaces a changed block at the same height');
+  let announcements=0;bus.on('btcblock',()=>announcements++);
+  const latest={height:976003,timestamp:1000,id:'d'.repeat(64)};
+  go('blocks');btcMerge([latest],true,true);
+  btcMerge([{height:976002,timestamp:1001,id:'c'.repeat(64)}],true,true);
+  btcMerge([latest],true,true);
+  test(S.btc===latest.height&&announcements===1,'lagging Bitcoin snapshots cannot rewind the tip or replay its announcement');
+  test(BX.d===-1&&BX.st===null,'non-increasing Bitcoin timestamps do not produce Zenon interval counts');
   if(typeof validateRange==='function'){let rejected=false;try{validateRange([{momentum:{height:1,timestamp:GENESIS_TS,hash:'a'.repeat(64)},blocks:[]}],1,2)}catch(e){rejected=true}test(rejected,'incomplete RPC ranges cannot qualify as complete coverage');}
   else test(false,'incomplete RPC ranges cannot qualify as complete coverage');
   const payloads=Array.from({length:1601},(_,i)=>({blockType:2,hash:(i+5000).toString(16).padStart(64,'0'),address:'sender',toAddress:'recipient',amount:'0',tokenStandard:ZNN,usedPlasma:21000,fusedPlasma:21000,difficulty:0}));
@@ -100,6 +108,22 @@ async function fixtures(){
  const slow=await browser.newPage();await slow.goto(local+'?node='+encodeURIComponent('ws://localhost:8857/slowhistory')+'&btcapi='+encodeURIComponent(local.slice(0,-1))+'#history');
  let progressive=true;try{await slow.waitForFunction(()=>S.hs&&S.hist.length>=3&&!S.historyComplete&&SC.cur>=0&&SC.list[SC.cur].id==='history'&&document.querySelector('#availability').hidden,{},{timeout:15000})}catch{progressive=false}
  check(progressive,'partial history becomes usable before later sample groups finish');await slow.close();
+ const touch=await browser.newPage({viewport:{width:375,height:667},isMobile:true,hasTouch:true,reducedMotion:'reduce'});
+ touch.on('pageerror',e=>errors.push(e.message));
+ await touch.goto(target(local,'blocks'));
+ await touch.waitForFunction(()=>SC.list[SC.cur]===BL&&BL.sq.size>0);
+ const tile=await touch.evaluate(()=>{
+  const r=BL.cv.getBoundingClientRect(),q=BL.sq.values().next().value,cell=r.width/BL.G;
+  return {x:r.left+(q.tx+q.ts/2)*cell,y:r.top+(q.ty+q.ts/2)*cell};
+ });
+ await touch.touchscreen.tap(tile.x,tile.y);
+ check(await touch.evaluate("!!BL.hl&&$('#tip').classList.contains('show')&&!NT.open"),'first touch exposes the tile card without opening the notary');
+ await touch.touchscreen.tap(tile.x,tile.y);
+ check(await touch.evaluate("NT.open&&!BL.hl&&!$('#tip').classList.contains('show')"),'second touch opens the notary and clears the tile card');
+ await touch.keyboard.press('Escape');
+ await touch.touchscreen.tap(tile.x,tile.y);await touch.touchscreen.tap(4,160);
+ check(await touch.evaluate('!BL.hl&&!NT.open'),'touching outside the mosaic releases the scene');
+ await touch.close();
  check(errors.length===0,'data controls have no browser errors',errors.join(' | '));
 }
 async function live(base){

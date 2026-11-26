@@ -189,9 +189,17 @@ async function regression() {
   await page.evaluate('node.ws.close()');
   ok(await waitFor(page, "S.mode==='reconnecting'", 2000), 'socket loss removes the LIVE state');
   ok(await waitFor(page, "S.mode==='live'&&node.alive", 11000), 'socket loss recovers through failover');
-  await page.evaluate('(()=>{const previous=S.lastTs;S.lastTs-=120;checkConnection();S.lastTs=previous})()');
-  ok(await page.evaluate("S.mode==='reconnecting'&&document.querySelector('#statusTxt').textContent==='RECONNECTING…'"), 'watchdog labels a stale connection before reconnecting');
-  ok(await waitFor(page, "S.mode==='live'&&node.alive", 11000), 'watchdog recovers fresh data');
+  const watchdog = await page.evaluate(async () => {
+    const socket=node.ws,reference=clockReference;
+    clockReference={utc:utcNow()+120,received:performance.now()};
+    await checkConnection();
+    const stalled=S.stalled&&node.ws===socket&&$('#statusTxt').textContent==='NO RECENT MOMENTUM';
+    clockReference=reference;lastNote=-Infinity;
+    await checkConnection();
+    return {stalled,recovered:!S.stalled&&node.ws===socket&&$('#statusTxt').textContent.startsWith('LIVE')};
+  });
+  ok(watchdog.stalled, 'responsive node with an old frontier displays stalled production without reconnecting');
+  ok(watchdog.recovered, 'a fresh frontier clears the stall on the existing socket');
 
   await page.goto(url(nodeBase + '/silent'));
   const hadBitcoin = await waitFor(page, 'S.btc>=976100', 3000);
@@ -211,12 +219,35 @@ async function regression() {
 
   await page.goto(url(nodeBase + '/ws'));
   await waitFor(page, "S.mode==='live'&&S.ready", 11000);
+  await page.evaluate(()=>{window.recoveryMarker=true;startSim()});
+  const recovered=await page.evaluate(async()=>{
+    await probeRecovery();
+    return window.recoveryMarker&&S.mode==='live'&&node.alive&&
+      S.ms.length>=1000&&!S.ms.some(m=>m.producer.startsWith('z1qsim'));
+  });
+  ok(recovered,'recovery replaces a simulated snapshot with live records in the same page');
+  ok(await waitFor(page,'S.btc>=976100',4000),'recovery restores real Bitcoin transport');
+  const skew=await browser.newPage();
+  await skew.addInitScript(()=>{AbortSignal.any=undefined;AbortSignal.timeout=undefined});
+  for(const offset of [-40000,91000]){
+    await skew.clock.setFixedTime(new Date(Date.now()+offset));
+    await skew.goto(url(nodeBase+'/stale,'+nodeBase+'/ws'));
+    ok(await waitFor(skew,"S.mode==='live'&&!!clockReference&&node.url.endsWith('/ws')",11000),`HTTP UTC accepts live data and rejects stale data with a ${offset/1000}s device offset`);
+  }
+  ok(await waitFor(skew,'S.btc>=976100',4000),'Bitcoin HTTP works without AbortSignal.any or AbortSignal.timeout');
+  await skew.close();
+  await page.focus('#nav [data-id="pause"]');await page.keyboard.press('Space');
+  ok(await page.evaluate("SC.paused&&document.activeElement===document.querySelector('#nav [data-id=pause]')&&document.activeElement.getAttribute('aria-pressed')==='true'"),'native Space activation preserves pause focus');
+  await page.keyboard.press('Control+KeyN');await page.keyboard.press('Meta+KeyN');await page.keyboard.press('Alt+ArrowRight');
+  ok(await page.evaluate('!NT.open&&!location.hash'),'browser modifier shortcuts leave scene and modal state alone');
   const nativeClassification=await page.evaluate("classify({blockType:2,tokenStandard:'zts1example',token:{symbol:'ZNN',decimals:8},amount:'100000000'}).kind");
   ok(nativeClassification==='zts','a custom token named ZNN is not classified as native ZNN');
-  await page.keyboard.press('n'); await page.waitForTimeout(150);
+  await page.keyboard.press('N'); await page.waitForTimeout(150);
   ok(await page.evaluate("document.activeElement.id==='ntI'&&document.querySelector('#notary').getAttribute('aria-modal')==='true'"), 'notary opens as a labelled dialog and focuses its input');
   await page.focus('#ntX'); await page.keyboard.press('Shift+Tab');
   ok(await page.evaluate("document.activeElement===document.querySelector('#ntF button')"), 'dialog keyboard focus stays inside the notary');
+  await page.keyboard.press('KeyM');await page.keyboard.press('Digit1');await page.keyboard.press('ArrowRight');
+  ok(await page.evaluate('!SND.on&&!location.hash&&NT.open'),'modal keys do not operate the background scene');
   const hash = await page.evaluate("S.ms.flatMap(m=>m.blocks).find(b=>b.hash)?.hash");
   await page.fill('#ntI', hash); await page.press('#ntI', 'Enter');
   ok(await waitFor(page, "NT.last&&NT.last.verification.includes('not independently verified')&&NT.last.bitcoinMapping.includes('not a timestamp proof')", 8000), 'copied observation records its trust boundary');

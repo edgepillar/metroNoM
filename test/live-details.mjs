@@ -26,7 +26,11 @@ try{
  check(evidence.count>0&&evidence.sameHash&&evidence.sameBlocks,'nonempty momentum account-block hashes match a fresh RPC response',String(evidence.height));
  check(['ZNN','QSR'].every(k=>Math.abs(evidence.expected[k]-evidence.moved[k])<=Math.max(1e-8,Math.abs(evidence.expected[k])*1e-12)),'native send totals match independently summed raw base units');
  const st=evidence.stats;check(st.prod+st.miss+st.unk+st.pending+st.rem===8640&&st.blk<=st.prod,'live epoch categories total exactly 8640 slots',JSON.stringify(st));
+ await page.setViewportSize({width:800,height:450});
+ await page.mouse.move(700,410);
+ check(await page.locator('#nav').evaluate(el=>el.classList.contains('show')),'the controls are visible during the short viewport export check');
  const download=page.waitForEvent('download',{timeout:15000});await page.locator('#rugSave').click();const saved=await download;const exportPath=path.join(shots,'epoch-export.png');await saved.saveAs(exportPath);
+ await page.setViewportSize({width:390,height:844});
  const png=readFileSync(exportPath),dimensions={width:png.readUInt32BE(16),height:png.readUInt32BE(20),bytes:png.length,sha256:createHash('sha256').update(png).digest('hex')};
  check(png.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))&&dimensions.width===1856&&dimensions.height===944&&png.length<1048576,'live epoch PNG export is complete and has the expected dimensions',JSON.stringify(dimensions));
  await page.waitForTimeout(1200);await page.screenshot({path:path.join(shots,'mobile-epoch.png')});
